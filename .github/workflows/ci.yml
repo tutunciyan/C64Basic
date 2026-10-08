@@ -27,8 +27,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          dotnet run --project src/C64Basic.Gui --configuration Release --no-build --             --fast --snapshot smoke.bmp --type 'PRINT 6*7
-'
+          dotnet run --project src/C64Basic.Gui --configuration Release --no-build -- \
+            --fast --snapshot smoke.bmp --type 'PRINT 6*7\n'
           code=$?
           echo "exit code: $code"
           ls -l smoke.bmp

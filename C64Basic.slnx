@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/C64Basic.Console/C64Basic.Console.csproj" />
+    <Project Path="src/C64Basic.Core/C64Basic.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/C64Basic.Tests/C64Basic.Tests.csproj" />
+  </Folder>
+</Solution>

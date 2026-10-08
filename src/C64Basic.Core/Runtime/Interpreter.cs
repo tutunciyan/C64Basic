@@ -134,8 +134,26 @@ public sealed partial class Interpreter
     }
 
     // ---------- program store ----------
+    /// <summary>
+    /// Set after LOAD "$": a directory listing has several lines with the same number and out of order. Lookups then scan
+    /// from the top for the first line at or after the number, which is what the real line editor does.
+    /// </summary>
+    bool _unordered;
+
     int FindLine(int number)
     {
+        if (_unordered)
+        {
+            bool ascending = true;
+            for (int i = 1; i < _lines.Count && ascending; i++) ascending = _lines[i - 1].Number < _lines[i].Number;
+            if (ascending) _unordered = false;
+            else
+            {
+                for (int i = 0; i < _lines.Count; i++)
+                    if (_lines[i].Number >= number) return _lines[i].Number == number ? i : ~i;
+                return ~_lines.Count;
+            }
+        }
         int lo = 0, hi = _lines.Count - 1;
         while (lo <= hi)
         {

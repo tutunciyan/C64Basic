@@ -175,14 +175,18 @@ public sealed partial class Interpreter
     /// </summary>
     void ReplaceProgram(IEnumerable<(int Number, string Text)> lines, bool keepOrder = false)
     {
+        var all = lines.ToList();
+        // a program whose numbers are not strictly ascending (a saved directory) is kept exactly as it is
+        keepOrder |= Enumerable.Range(1, Math.Max(0, all.Count - 1)).Any(i => all[i - 1].Number >= all[i].Number);
         _lines.Clear();
         ClearState();
-        foreach (var (number, text) in lines)
+        foreach (var (number, text) in all)
         {
             if (number > MaxLineNumber) throw new BasicException(ErrorCode.Load);
             if (keepOrder) _lines.Add(new ProgramLine { Number = number, Text = text });
             else StoreLine(number, _lexer.Normalize(text));
         }
+        _unordered = keepOrder;
         ProgramChanged();
         _halted = true;
     }

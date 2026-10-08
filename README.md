@@ -157,8 +157,7 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 `USR` without a vector raises `?ILLEGAL QUANTITY`. Relative (`REL`) files, direct-access block commands (`U1`, `B-R`, ...),
 `.tap` pulse images and DOS errors beyond those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed
 above. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
-`LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64. A directory loaded with `LOAD "$"` keeps its
-lines in file order, so several files with the same block count each show up, but it should not be edited or run.
+`LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64. A directory loaded with `LOAD "$"` keeps its lines in file order, so several files with the same block count each show up; typing a line number then replaces the first line with that number or goes in before the first larger one, like the real line editor.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause. The extension words `FIND`, `TRACE`, `RENUMBER` and `ELSE` can be used as variable names (the

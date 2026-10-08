@@ -25,6 +25,20 @@ public interface IConsoleDevice
     void Attach(Bus bus) { }
 }
 
+/// <summary>Shows the picture the VIC-II draws. The host calls <c>bus.Vic.Render</c> once per frame and passes it on.</summary>
+public interface IVideoDevice
+{
+    /// <param name="argb"><see cref="Vic2.FrameWidth"/> x <see cref="Vic2.FrameHeight"/> opaque ARGB pixels, row by row.</param>
+    void PresentFrame(ReadOnlySpan<uint> argb);
+}
+
+/// <summary>Plays the sound the SID produces. The host asks the chip for samples with <c>bus.Sound.Render</c>.</summary>
+public interface IAudioDevice
+{
+    int SampleRate { get; }
+    void Submit(ReadOnlySpan<short> samples);
+}
+
 /// <summary>Where LOAD, SAVE, VERIFY and OPEN read and write files.</summary>
 public interface IFileSystem
 {

@@ -17,7 +17,7 @@ Press Ctrl+C to act as RUN/STOP.
 
 | Path | Contents |
 |---|---|
-| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II registers, colour RAM), `Repl` |
+| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II, SID, colour RAM), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
 | `samples/` | example programs |
@@ -67,11 +67,22 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   are exact, a few graphics are drawn, and the rest read as blank). `ASC` of a typed letter gives its upper-case PETSCII code.
   Programs that rely on 40-column line wrapping (e.g. `samples/banner.bas`) run correctly, since the screen is 40 columns by default.
 
+## VIC-II and SID (core only)
+
+`interp.Bus` models the VIC-II and SID registers. `Bus.Vic.Render(uint[])` draws a 384x272 ARGB frame: text,
+multicolour and extended-colour text, hires and multicolour bitmaps, custom character sets, the VIC bank from
+`$DD00`, and eight sprites (expansion, multicolour, priority, sprite-sprite and sprite-background collisions).
+`$D012`/`$D011` give a raster line that advances at 50 Hz and the raster-compare flag is set in `$D019`.
+`Bus.Sound.Render(short[], sampleRate)` produces mono audio: three voices, four waveforms, ring modulation,
+sync, ADSR, a state-variable filter and volume. `IVideoDevice` and `IAudioDevice` are the interfaces a front end
+implements to show and play these; the terminal front end does not, so sprites and sound only come out through a
+host that calls them (a GUI is planned). A SID frequency register tops out near 3.8 kHz, as on a real chip.
+
 ## Not implemented
 
 Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` raises `?ILLEGAL QUANTITY`.
-Relative and program files, disk commands such as scratch, sprites, sound, and any `POKE`/`PEEK` hardware
-registers not listed above are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
+Relative and program files, disk commands such as scratch, and any `POKE`/`PEEK` hardware
+registers not listed above (CIA ports and timers, for instance) are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is

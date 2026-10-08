@@ -21,7 +21,8 @@ public sealed class Bus
     /// <summary>The 64K of RAM. Writes made through this array bypass banking and <see cref="Written"/>.</summary>
     public byte[] Ram { get; } = new byte[65536];
 
-    public Vic2 Vic { get; } = new();
+    public Vic2 Vic { get; }
+    public Sid Sound { get; } = new();
     public ColorRam Color { get; } = new();
 
     readonly byte[] _io = new byte[IoLength];
@@ -32,13 +33,19 @@ public sealed class Bus
 
     public Bus()
     {
+        Vic = new Vic2(this);
         Ram[0] = 0x2F;      // CPU port direction
         Ram[1] = 0x37;      // BASIC, KERNAL and I/O visible
         Ram[646] = 14;      // text colour
         _io[56334 - IoStart] = 0x81;  // CIA 1 control register A
         Map(Vic2.Start, Vic2.Length, Vic);
+        Map(Sid.Start, Sid.Length, Sound);
         Map(ColorRam.Start, ColorRam.Length, Color);
+        _io[0xDD00 - IoStart] = 0x97; // CIA 2 port A: VIC bank 0
     }
+
+    /// <summary>A byte of the I/O area as stored for addresses without a chip (CIA 2's VIC bank bits live here for now).</summary>
+    public byte IoByte(int address) => _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
 
     public void Map(int start, int length, IMemoryMapped chip)
     {

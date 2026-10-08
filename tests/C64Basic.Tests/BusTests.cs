@@ -38,7 +38,7 @@ public class BusTests
 
     [Fact]
     public void UnmappedIoActsAsStorage() =>
-        Assert.Equal(" 7  129 \n", Basic.Run("POKE 54272,7:PRINT PEEK(54272);PEEK(56334)"));
+        Assert.Equal(" 7  129 \n", Basic.Run("POKE 56832,7:PRINT PEEK(56832);PEEK(56334)"));
 
     [Fact]
     public void WritesWithIoHiddenGoToRamNotChips()

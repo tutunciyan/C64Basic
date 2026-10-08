@@ -256,12 +256,15 @@ public sealed partial class Interpreter
                 continue;
             }
 
-            if (_opts.StatementsPerSecond > 0) Throttle();
+            if (_opts.StatementsPerSecond > 0 && !Warp) Throttle();
 
             if (_trace && _curStmt == 0 && _curLine >= 0) Write($"[{_lines[_curLine].Number}]");
             Exec(stmts[_curStmt++]);
         }
     }
+
+    /// <summary>Runs at full speed even though the options ask for C64 speed; a host can toggle it while running.</summary>
+    public volatile bool Warp;
 
     long _throttleStart, _throttleCount;
 

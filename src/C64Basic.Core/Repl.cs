@@ -21,9 +21,9 @@ public sealed class Repl
     }
 
     /// <summary>Runs until the input ends.</summary>
-    public void Run()
+    public void Run(bool showBanner = true)
     {
-        Banner();
+        if (showBanner) Banner();
         try
         {
             while (true)
@@ -56,6 +56,13 @@ public sealed class Repl
         try { _interp.ProcessLine("RUN"); }
         catch (InputEndedException) { }
         return !_interp.LastRunFailed;
+    }
+
+    /// <summary>Prints READY. and keeps prompting; used after a program given on the command line has run.</summary>
+    public void Resume()
+    {
+        PrintReady();
+        Run(showBanner: false);
     }
 
     void PrintReady()

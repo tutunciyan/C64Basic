@@ -3,3 +3,4 @@ obj/
 .vs/
 *.user
 /src/C64Basic.Console/Properties/launchSettings.json
+/c64-*.bmp

@@ -107,7 +107,7 @@ public sealed partial class Interpreter
     bool CpuTick(long cycles)
     {
         if (_dev.BreakRequested) return true;
-        if (_opts.StatementsPerSecond > 0)
+        if (_opts.StatementsPerSecond > 0 && !Warp)
         {
             double expected = (cycles - _cpuStartCycles) / Cia.ClockHz;
             double actual = Stopwatch.GetElapsedTime(_cpuStartTimestamp).TotalSeconds;

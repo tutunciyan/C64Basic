@@ -173,25 +173,7 @@ sealed class C64Screen
     }
 
     // ---------- text output ----------
-    public static int ToScreenCode(char c)
-    {
-        if (Petscii.IsGlyph(c))
-        {
-            int p = c - Petscii.Base;
-            if (p <= 127) return p - 32;
-            if (p <= 191) return p - 64;
-            if (p <= 254) return p - 128;
-            return 94;
-        }
-        if (c >= 'a' && c <= 'z') return c - 'a' + 1;
-        if (c >= 'A' && c <= 'Z') return c - 'A' + 1;
-        return c switch
-        {
-            '@' => 0, '[' => 27, '£' => 28, ']' => 29, '^' => 30, '_' => 31, '|' => 93,
-            >= ' ' and <= '?' => c,
-            _ => 63,
-        };
-    }
+    public static int ToScreenCode(char c) => ScreenEditor.ToScreenCode(c);
 
     public void Write(string text)
     {

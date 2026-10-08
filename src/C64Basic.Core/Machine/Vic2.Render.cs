@@ -17,6 +17,7 @@ public sealed partial class Vic2
         0xFF6F4F25, 0xFF433900, 0xFF9A6759, 0xFF444444, 0xFF6C6C6C, 0xFF9AD284, 0xFF6C5EB5, 0xFF959595,
     };
 
+    readonly object _composeGate = new(); // the host renders frames while the interpreter may read collision registers
     readonly byte[] _pixel = new byte[DisplayWidth * DisplayHeight];  // colour index of the graphics layer
     readonly bool[] _foreground = new bool[DisplayWidth * DisplayHeight]; // pixel counts as foreground for priority/collision
     readonly sbyte[] _winner = new sbyte[DisplayWidth * DisplayHeight];   // highest-priority sprite on a pixel, or -1
@@ -26,6 +27,11 @@ public sealed partial class Vic2
     public void Render(uint[] frame)
     {
         if (frame.Length < FrameWidth * FrameHeight) throw new ArgumentException("frame is too small", nameof(frame));
+        lock (_composeGate) RenderLocked(frame);
+    }
+
+    void RenderLocked(uint[] frame)
+    {
         Compose();
 
         uint border = Palette[Border];
@@ -50,7 +56,7 @@ public sealed partial class Vic2
     }
 
     /// <summary>Latches sprite collisions from current memory without producing a frame.</summary>
-    void ComputeCollisions() => Compose();
+    void ComputeCollisions() { lock (_composeGate) Compose(); }
 
     void Compose()
     {

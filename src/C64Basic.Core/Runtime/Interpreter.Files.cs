@@ -300,5 +300,5 @@ public sealed partial class Interpreter
     }
 
     public string Banner =>
-        $"\n    **** {(_opts.Strict ? "COMMODORE 64 BASIC V2" : "COMMODORE 64 BASIC V2 (C# EDITION)")} ****\n\n 64K RAM SYSTEM  38911 BASIC BYTES FREE\n\nREADY.\n";
+        $"\n{(_opts.Strict ? "    **** COMMODORE 64 BASIC V2" : "   **** COMMODORE 64 BASIC V2 (C#)")} ****\n\n 64K RAM SYSTEM  38911 BASIC BYTES FREE\n\nREADY.\n";
 }

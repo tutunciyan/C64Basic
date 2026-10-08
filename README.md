@@ -10,6 +10,15 @@ dotnet run --project src/C64Basic.Console -- --strict          # stock V2 only
 dotnet test
 ```
 
+There is also a windowed version with the real VIC-II picture, sprites, SID sound, keyboard and joystick:
+
+```
+dotnet run --project src/C64Basic.Gui                          # a 40x25 C64 screen in a window
+dotnet run --project src/C64Basic.Gui -- --disk games.d64      # mount a disk image (or --tape x.t64)
+```
+
+See [The GUI](#the-gui) below. The terminal version's options:
+
 Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64>`, `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
@@ -19,6 +28,7 @@ Press Ctrl+C to act as RUN/STOP.
 |---|---|
 | `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, 6502 CPU, VIC-II, SID, CIA, colour RAM), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
+| `src/C64Basic.Gui` | windowed front end on SDL2 (Silk.NET): VIC-II frames, SID audio, keyboard and joystick |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
 | `samples/` | example programs |
 
@@ -98,7 +108,7 @@ multicolour and extended-colour text, hires and multicolour bitmaps, custom char
 `Bus.Sound.Render(short[], sampleRate)` produces mono audio: three voices, four waveforms, ring modulation,
 sync, ADSR, a state-variable filter and volume. `IVideoDevice` and `IAudioDevice` are the interfaces a front end
 implements to show and play these; the terminal front end does not, so sprites and sound only come out through a
-host that calls them (a GUI is planned). A SID frequency register tops out near 3.8 kHz, as on a real chip.
+host that calls them (use `src/C64Basic.Gui`). A SID frequency register tops out near 3.8 kHz, as on a real chip.
 
 `Bus.Cia1`/`Cia2` are 6526 chips with two ports, two timers (also chained), time of day with the hours latch, and an
 interrupt register; they run from `Bus.Seconds`. CIA 1 reads a host-supplied `IInputDevice` through the real keyboard
@@ -107,6 +117,25 @@ the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `I
 `PEEK(197)` gives the KERNAL key index (64 = none) and `PEEK(653)` the shift/C=/CTRL flags. The jiffy clock at
 160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. The PB6/PB7 timer outputs, the serial
 shift register and TOD alarms are not modelled, and the terminal front end does not supply input.
+
+## The GUI
+
+`src/C64Basic.Gui` opens a window and runs the interpreter on its own thread. All output goes through the C64's own memory
+(`ScreenConsole`/`ScreenEditor` in Core write screen RAM, colour RAM and the cursor in zero page), and the window shows what
+`Bus.Vic.Render` draws from it. So `POKE 53280` borders, sprites, bitmap and multicolour modes, custom character sets and
+`PEEK` of screen RAM all work, and machine code can drive the screen directly. SID audio plays through SDL.
+
+- Options: `--scale <1-8>`, `--fast` (start in warp mode), `--fullscreen`, `--strict`, `--disk [n=]<file.d64>`, `--tape <file.t64>`,
+  a program to load and run, `--type <text>` and `--snapshot <file.bmp>` (for scripting and screenshots).
+- The prompt is the real screen editor: cursor keys move around, RETURN reads the logical line under the cursor (an old
+  `LIST` line can be edited and re-entered), long lines wrap and are read back as one, DEL/INST work, the key buffer holds
+  ten characters.
+- Keys: Esc = RUN/STOP, F1-F8, Home (Shift+Home clears), Ctrl+1-8 / Alt+1-8 pick the text colour, Ctrl+9/0 reverse on/off.
+  The key matrix is live for machine code that scans `$DC00`/`$DC01`; the numpad is joystick port 2 (8/2/4/6, 0 = fire).
+  F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`,
+  `.prg` or `.bas` file on the window mounts or loads it.
+- Limits: the character ROM only has the shapes listed above (no lower-case set, most PETSCII graphics are blank), there is
+  no quote mode (control keys act at once), no Shift+letter graphics, and no gamepad or port 1 joystick.
 
 ## Not implemented
 

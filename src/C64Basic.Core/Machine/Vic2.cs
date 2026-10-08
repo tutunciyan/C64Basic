@@ -69,38 +69,64 @@ public sealed partial class Vic2 : IMemoryMapped
     bool IsBadLine(int line) =>
         (_reg[Control1] & 0x10) != 0 && line is >= 0x30 and <= 0xF7 && (line & 7) == (_reg[Control1] & 7);
 
-    int SpritesOnLine(int line)
+    /// <summary>The sprites (bit n = sprite n) that are drawn on a raster line, so their data is fetched on the line before.</summary>
+    int SpriteMaskOnLine(int line)
     {
-        int count = 0;
+        int mask = 0;
         for (int n = 0; n < 8; n++)
         {
             if ((_reg[SpriteEnable] >> n & 1) == 0) continue;
             int ys = (_reg[SpriteExpandY] >> n & 1) + 1;
             int raw = line - (_reg[n * 2 + 1] + 1);
-            if (raw >= 0 && raw < 21 * ys) count++;
+            if (raw >= 0 && raw < 21 * ys) mask |= 1 << n;
         }
-        return count;
+        return mask;
     }
 
     /// <summary>
     /// How many CPU cycles the VIC-II takes from the processor between two absolute cycles: about 40 on the first cycles of a
-    /// "bad line" (when it fetches the row of characters) and 2 per sprite, plus 1, shown on the next line.
+    /// "bad line" (when it fetches the row of characters), and for every sprite shown on the next line 2 cycles at the sprite's own
+    /// place in the line (sprite 0 at cycle 58, then every 2 cycles, running over into the next line), the first one 1 more because
+    /// the chip pulls BA low 3 cycles ahead.
     /// </summary>
-    internal int StolenCycles(long from, long to)
+    public int StolenCycles(long from, long to)
     {
         int stolen = 0;
-        for (long n = from / CyclesPerLine; n <= to / CyclesPerLine; n++)
+        for (long n = Math.Max(0, from / CyclesPerLine - 1); n <= to / CyclesPerLine; n++)   // a line before: its sprite fetches run over
         {
             long badLine = n * CyclesPerLine + 12;                    // BA goes low at cycle 12 (the CPU stops at 15)
             if (badLine > from && badLine <= to && IsBadLine((int)(n % RasterLines))) stolen += 40;
-            long spriteDma = n * CyclesPerLine + 55;                  // sprite data is fetched at the end of the line before
-            if (spriteDma > from && spriteDma <= to)
+            long first = n * CyclesPerLine + 58;                      // the first sprite's data is fetched at the end of this line
+            if (first + 14 <= from || first > to) continue;           // (sprite 7's fetch ends 14 cycles later)
+            int mask = SpriteMaskOnLine((int)((n + 1) % RasterLines));
+            bool leading = true;
+            for (int k = 0; k < 8; k++)
             {
-                int sprites = SpritesOnLine((int)((n + 1) % RasterLines));
-                if (sprites > 0) stolen += 2 * sprites + 1;
+                if ((mask >> k & 1) == 0) continue;
+                long at = first + 2 * k;
+                if (at > from && at <= to) stolen += leading ? 3 : 2;
+                leading = false;
             }
         }
         return stolen;
+    }
+
+    long _lightPenFrame = -1;
+
+    /// <summary>
+    /// A light pen strike at beam position (<paramref name="x"/> in the sprite coordinate system, 0-511; <paramref name="y"/> the raster
+    /// line, 0-311). The first strike in a frame latches the position (X in units of two pixels) into $D013/$D014 and sets the
+    /// light-pen interrupt flag; further strikes in the same frame are ignored, as on the chip.
+    /// </summary>
+    public void LightPen(int x, int y)
+    {
+        long frame = CurrentLine / RasterLines;
+        if (frame == _lightPenFrame) return;
+        _lightPenFrame = frame;
+        _reg[0x13] = (byte)(x >> 1 & 0xFF);
+        _reg[0x14] = (byte)(y & 0xFF);
+        PollRaster();
+        _reg[IrqFlags] |= 8;
     }
 
     /// <summary>True while an enabled VIC interrupt source (raster, collisions) has its flag set: the IRQ line.</summary>
@@ -191,7 +217,9 @@ public sealed partial class Vic2 : IMemoryMapped
                 return;
             case SpriteSpriteCollision:
             case SpriteBackgroundCollision:
-                return; // read-only
+            case 0x13:
+            case 0x14:
+                return; // read-only (the light pen latches)
         }
         _reg[r] = value;
         LogWrite(r, _reg[r]);

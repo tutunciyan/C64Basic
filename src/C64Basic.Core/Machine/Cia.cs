@@ -114,6 +114,17 @@ public class Cia : IMemoryMapped
         CheckAlarm();
     }
 
+    // ---------- the FLAG pin ----------
+    /// <summary>
+    /// A falling edge on the FLAG pin from the host (the cassette read line on CIA 1, the user port on CIA 2): sets bit 4 of the
+    /// interrupt register, which raises the interrupt if it is enabled.
+    /// </summary>
+    public void PulseFlag()
+    {
+        Sync();
+        _flags |= 0x10;
+    }
+
     // ---------- the CNT pin ----------
     /// <summary>The level of the CNT pin: timer B can count A's underflows only while it is high (CRB bits 6-5 = 11).</summary>
     public bool CntHigh { get; set; } = true;
@@ -429,6 +440,14 @@ public sealed class Cia1 : Cia
 public sealed class Cia2 : Cia
 {
     public const int Start = 0xDD00;
+
+    /// <summary>The levels the outside world holds on the user port's eight pins (PB0-PB7); undriven pins are high.</summary>
+    public byte UserPortInput { get; set; } = 0xFF;
+
+    /// <summary>What the C64 drives onto the user port: the pins set as outputs, with their latched levels (inputs read high).</summary>
+    public byte UserPortOutput => (byte)(Prb & Ddrb | ~Ddrb);
+
+    protected override byte PinsB() => UserPortInput;
 
     public Cia2(Bus bus) : base(bus, Start)
     {

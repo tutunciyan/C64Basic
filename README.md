@@ -136,14 +136,14 @@ The picture is drawn per raster line from a log of register writes, so changes m
 they were made: colour bars, split screens, sprite multiplexing (a sprite register rewritten after its line is drawn gives a second
 sprite), fine scrolling (`$D011`/`$D016`), and the border tricks that open the top/bottom border (RSEL switched at the right line) and
 the side borders (CSEL switched at cycle 56/57). While machine code runs (`SYS`) the clock follows the instructions cycle for cycle,
-interrupts are taken after every instruction, and the VIC-II steals cycles on bad lines (about 40) and for sprites (2 each, plus 1),
+interrupts are taken after every instruction, and the VIC-II steals cycles on bad lines (about 40) and for sprites (2 each, plus 1 for the first, each at the sprite's own place in the line: sprite 0 at cycle 58, then every 2 cycles),
 so a stable raster interrupt sees the same line every frame. BASIC itself runs on the host's clock.
 `Bus.Sound.Render(short[], sampleRate)` produces mono audio: three voices, four waveforms, ring modulation,
 sync, ADSR, a state-variable filter and volume. `Bus.Sound.Model` picks the 6581 (default; dark, strongly non-linear filter,
 combined waveforms lose bits) or the 8580 (`--sid 8580` in the GUI; linear cutoff, cleaner combinations). Noise combined with another
 waveform locks up as on the real chip. The combined waveforms are modelled, not sampled from real chips. `IVideoDevice` and `IAudioDevice` are the interfaces a front end
 implements to show and play these; the terminal front end does not, so sprites and sound only come out through a
-host that calls them (use `src/C64Basic.Gui`). A SID frequency register tops out near 3.8 kHz, as on a real chip.
+host that calls them (use `src/C64Basic.Gui`). `Vic.LightPen(x, y)` is a light pen strike: the first in a frame latches `$D013`/`$D014` and sets the interrupt flag (bit 3). A SID frequency register tops out near 3.8 kHz, as on a real chip.
 
 `Bus.Cia1`/`Cia2` are 6526 chips with two ports, two timers (also chained), time of day with the hours latch, and an
 interrupt register; they run from `Bus.Seconds`. CIA 1 reads a host-supplied `IInputDevice` through the real keyboard
@@ -153,8 +153,7 @@ the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `I
 160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. Timers A/B drive PB6/PB7 (pulse or toggle), the shift register
 clocks a byte out on timer A (`SerialOut`) or takes one from the host (`ReceiveSerial`) and raises its interrupt, and the TOD alarm sets
 flag 4. `Cia.PulseCnt(n)` feeds pulses to the CNT pin: timer A counts them (CRA bit 5), timer B counts them or A's underflows, optionally
-only while `CntHigh` (CRB bits 6-5). Nothing in the front ends drives CNT; it is for hosts and tests. The edge detection on the FLAG
-line is not modelled. Saved machine states (`.sav`, version 2) include the timer outputs, shift register and CNT level; version 1 files load too.
+only while `CntHigh` (CRB bits 6-5). Nothing in the front ends drives CNT; it is for hosts and tests. `PulseFlag()` is a falling edge on FLAG (ICR bit 4). `Bus.Cia2.UserPortInput`/`UserPortOutput` are the user port pins (PB0-7). Saved machine states (`.sav`, version 2) include the timer outputs, shift register and CNT level; version 1 files load too.
 
 **Paddles:** `IInputDevice.Paddle(port, axis)` is what the SID reads at `$D419`/`$D41A`; CIA 1 port A bits 7-6 pick the game port (`POKE 56320,64` =
 port 1, `128` = port 2, as the C64 documents it; selecting both or neither reads 0). The fire buttons are the joystick's left and right bits

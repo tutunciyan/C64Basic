@@ -191,3 +191,128 @@ public class PeripheralTests
         Assert.Equal((byte)0x55, sent);                    // the shift in progress carried on
     }
 }
+
+public class AccuracyDetailTests
+{
+    const double Cycle = 1.0 / Cia.ClockHz;
+
+    sealed class Clocked
+    {
+        public double Now;
+        public Bus Bus = new();
+        public Clocked() => Bus.Seconds = () => Now;
+        public void Wait(double cycles) => Now += cycles * Cycle;
+        public int Read(int a) => Bus.Read(a);
+        public void Write(int a, int v) => Bus.Write(a, (byte)v);
+    }
+
+    // ---------- sprite DMA ----------
+    static int Stolen(Bus bus, long from, long to) => bus.Vic.StolenCycles(from, to);
+
+    static Bus WithSprites(int mask, int y = 100)
+    {
+        var bus = new Bus { Seconds = () => 0 };
+        bus.Write(0xD011, 0x0B);                              // no bad lines
+        bus.Write(0xD015, (byte)mask);
+        for (int n = 0; n < 8; n++) bus.Write(0xD001 + n * 2, (byte)y);
+        return bus;
+    }
+
+    [Fact]
+    public void ASpriteTakesItsCyclesAtItsOwnPlaceInTheLine()
+    {
+        var bus = WithSprites(0b100);                        // sprite 2 only, drawn from line 101
+        long line100 = 100 * Vic2.CyclesPerLine;
+        Assert.Equal(0, Stolen(bus, line100, line100 + 50));                       // nothing before its fetch
+        Assert.Equal(3, Stolen(bus, line100 + 50, line100 + 63 + 2));               // 58 + 2*2 = 62
+        Assert.Equal(0, Stolen(bus, line100 + 70, line100 + 120));
+    }
+
+    [Fact]
+    public void EightSpritesTake17CyclesInAll()
+    {
+        var bus = WithSprites(0xFF);
+        long line100 = 100 * Vic2.CyclesPerLine;
+        Assert.Equal(3 + 7 * 2, Stolen(bus, line100, line100 + 80));            // one line's fetches end 72 cycles in
+    }
+
+    [Fact]
+    public void SpritesThatAreNotOnTheNextLineStealNothing()
+    {
+        var bus = WithSprites(0xFF, y: 100);
+        long line50 = 50 * Vic2.CyclesPerLine;
+        Assert.Equal(0, Stolen(bus, line50, line50 + 3 * Vic2.CyclesPerLine));
+    }
+
+    [Fact]
+    public void ASpanThatStartsAfterTheFetchBeganStillCatchesTheRest()
+    {
+        var bus = WithSprites(0xFF);
+        long line101Start = 101 * Vic2.CyclesPerLine;
+        // sprites 3..7 are fetched at cycles 64..72, i.e. on line 101
+        Assert.Equal(5 * 2, Stolen(bus, line101Start, line101Start + 20));
+    }
+
+    // ---------- light pen ----------
+    [Fact]
+    public void TheLightPenLatchesItsPositionOncePerFrame()
+    {
+        var m = new Clocked();
+        m.Write(0xD01A, 0x08);
+        m.Bus.Vic.LightPen(200, 120);
+        Assert.Equal(100, m.Read(0xD013));
+        Assert.Equal(120, m.Read(0xD014));
+        Assert.Equal(0x08, m.Read(0xD019) & 0x08);
+        Assert.True(m.Bus.Vic.InterruptPending);
+        m.Bus.Vic.LightPen(50, 60);                           // the same frame: ignored
+        Assert.Equal(100, m.Read(0xD013));
+        m.Write(0xD019, 0x08);
+        Assert.False(m.Bus.Vic.InterruptPending);
+        m.Now += 0.02;                                         // next frame
+        m.Bus.Vic.LightPen(50, 60);
+        Assert.Equal(25, m.Read(0xD013));
+        Assert.Equal(60, m.Read(0xD014));
+    }
+
+    [Fact]
+    public void TheLightPenRegistersCannotBeWritten()
+    {
+        var m = new Clocked();
+        m.Write(0xD013, 77);
+        Assert.Equal(0, m.Read(0xD013));
+    }
+
+    // ---------- the FLAG pin and the user port ----------
+    [Fact]
+    public void AnEdgeOnFlagSetsBit4AndInterrupts()
+    {
+        var m = new Clocked();
+        m.Write(0xDD0D, 0x90);                                // enable FLAG
+        Assert.False(m.Bus.Cia2.InterruptPending);
+        m.Bus.Cia2.PulseFlag();
+        Assert.True(m.Bus.Cia2.InterruptPending);
+        Assert.Equal(0x90, m.Read(0xDD0D));
+        Assert.False(m.Bus.Cia2.InterruptPending);            // reading acknowledged it
+    }
+
+    [Fact]
+    public void AMaskedFlagOnlyShowsInTheRegister()
+    {
+        var m = new Clocked();
+        m.Bus.Cia1.PulseFlag();
+        Assert.False(m.Bus.Cia1.InterruptPending && false);
+        Assert.Equal(0x10, m.Read(0xDC0D) & 0x1F & 0x10);
+    }
+
+    [Fact]
+    public void TheUserPortReadsWhatTheOutsideWorldHolds()
+    {
+        var m = new Clocked();
+        m.Bus.Cia2.UserPortInput = 0xA5;
+        Assert.Equal(0xA5, m.Read(0xDD01));
+        m.Write(0xDD03, 0x0F);                                // low nibble becomes output
+        m.Write(0xDD01, 0x03);
+        Assert.Equal(0xA1, m.Read(0xDD01));                   // an output bit reads low if either the latch or the pin is low
+        Assert.Equal(0xF3, m.Bus.Cia2.UserPortOutput);
+    }
+}

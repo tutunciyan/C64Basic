@@ -26,9 +26,13 @@ jobs:
       - name: GUI smoke test
         shell: bash
         run: |
-          dotnet run --project src/C64Basic.Gui --configuration Release --no-build -- \
-            --fast --snapshot smoke.bmp --type 'PRINT 6*7\n'
-          test "$(wc -c < smoke.bmp)" -gt 300000
+          set +e
+          dotnet run --project src/C64Basic.Gui --configuration Release --no-build --             --fast --snapshot smoke.bmp --type 'PRINT 6*7
+'
+          code=$?
+          echo "exit code: $code"
+          ls -l smoke.bmp
+          test "$code" -eq 0 && test "$(wc -c < smoke.bmp)" -gt 300000
 
   publish:
     # self-contained builds of the terminal and window versions, attached to a GitHub release when a v* tag is pushed

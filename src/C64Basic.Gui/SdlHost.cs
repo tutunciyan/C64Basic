@@ -3,6 +3,7 @@ using C64Basic.Core.Disk;
 using C64Basic.Core.IO;
 using C64Basic.Core.Machine;
 using C64Basic.Core.Runtime;
+using Silk.NET.Core.Contexts;
 using Silk.NET.SDL;
 
 namespace C64Basic.Gui;
@@ -12,9 +13,31 @@ static unsafe class SdlHost
 {
     const int SampleRate = 44100;
 
-    static readonly Sdl Sdl = Sdl.GetApi();
+    static readonly Sdl Sdl = CreateApi();
     static AudioCallback _audioCallback = null!; // kept alive for SDL
     static Bus _bus = null!;
+
+    /// <summary>
+    /// Silk.NET looks for SDL2 by bare name, which does not reach the copy in <c>runtimes/&lt;rid&gt;/native</c> that a
+    /// plain build leaves on Linux and macOS (a published folder has it next to the executable). So the bundled library is
+    /// loaded by path when it is there, and the system's SDL2 is the fallback.
+    /// </summary>
+    static Sdl CreateApi()
+    {
+        string rid = RuntimeInformation.RuntimeIdentifier.StartsWith("osx", StringComparison.Ordinal) ? "osx"
+            : RuntimeInformation.RuntimeIdentifier.StartsWith("win", StringComparison.Ordinal) ? "win-" + RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()
+            : "linux-" + RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        string[] names = { "SDL2.dll", "libSDL2-2.0.so", "libSDL2-2.0.dylib", "libSDL2-2.0.0.dylib" };
+        foreach (string dir in new[] { AppContext.BaseDirectory, Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native") })
+        {
+            foreach (string name in names)
+            {
+                string path = Path.Combine(dir, name);
+                if (File.Exists(path)) return new Sdl(new DefaultNativeContext(path));
+            }
+        }
+        return Sdl.GetApi(); // fall back to the system's SDL2
+    }
 
     public static int Run(Interpreter interpreter, ScreenConsole console, System.Threading.Thread worker, int scale, bool fullscreen, string? snapshot)
     {

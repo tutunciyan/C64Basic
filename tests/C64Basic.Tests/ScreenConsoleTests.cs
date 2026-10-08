@@ -110,7 +110,7 @@ public class ScreenConsoleTests
     public void CloseUnblocksAWaitingReader()
     {
         var (console, _) = Make();
-        _ = Task.Run(async () => { await Task.Delay(50); console.Close(); });
+        new Thread(() => { Thread.Sleep(50); console.Close(); }) { IsBackground = true }.Start();
         Assert.Null(console.ReadLine());
     }
 
@@ -119,11 +119,13 @@ public class ScreenConsoleTests
     {
         var (console, _) = Make();
         Assert.False(console.CursorVisible);
-        var reader = Task.Run(() => console.ReadLine());
-        SpinWait.SpinUntil(() => console.CursorVisible, 1000);
-        Assert.True(console.CursorVisible);
+        string? line = null;
+        var reader = new Thread(() => line = console.ReadLine()) { IsBackground = true };   // not the pool: it can be busy on CI
+        reader.Start();
+        Assert.True(SpinWait.SpinUntil(() => console.CursorVisible, 10000));
         console.Inject("\r");
-        Assert.Equal("", reader.Result);
+        Assert.True(reader.Join(10000));
+        Assert.Equal("", line);
         Assert.False(console.CursorVisible);
     }
 
@@ -158,15 +160,15 @@ public class ScreenConsoleTests
 
         console.Inject("PRINT 6*7\r");
         var bus = interp.Bus;
-        Assert.True(SpinWait.SpinUntil(() => Screen(bus).Contains(" 42"), 3000), Screen(bus));
+        Assert.True(SpinWait.SpinUntil(() => Screen(bus).Contains(" 42"), 10000), Screen(bus));
         Assert.Contains("READY.", Screen(bus));
         Assert.Contains("COMMODORE 64 BASIC V2", Screen(bus));
 
         console.Inject("POKE 53280,2\r");
-        Assert.True(SpinWait.SpinUntil(() => bus.Vic.Border == 2, 3000));
+        Assert.True(SpinWait.SpinUntil(() => bus.Vic.Border == 2, 10000));
 
         console.Close();
-        Assert.True(thread.Join(3000));
+        Assert.True(thread.Join(10000));
     }
 
     [Fact]

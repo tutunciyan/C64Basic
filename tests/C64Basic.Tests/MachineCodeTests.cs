@@ -163,7 +163,7 @@ public class MachineCodeTests
         var console = new TestConsole();
         var interp = new Interpreter(console, new MemoryFileSystem());
         interp.ProcessLine(Poke(49152, 76, 0, 192));   // JMP $C000
-        _ = Task.Run(async () => { await Task.Delay(50); console.BreakRequested = true; });
+        new System.Threading.Thread(() => { System.Threading.Thread.Sleep(50); console.BreakRequested = true; }) { IsBackground = true }.Start();
         interp.ProcessLine("SYS 49152");
         Assert.Equal("BREAK\n", console.Output);
     }

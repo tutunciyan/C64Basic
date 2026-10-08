@@ -297,7 +297,7 @@ public class CiaTests
     [Fact]
     public void VicBankFollowsCia2()
     {
-        var bus = new Bus();
+        var bus = new Bus { Seconds = () => 0 };
         bus.Write(0xDD00, 0x14);                   // bits 1-0 = 00 -> bank 3
         bus.Ram[0xC000 + 1024 + 1016] = 5;
         for (int i = 0; i < 63; i++) bus.Ram[0xC000 + 5 * 64 + i] = 0xFF;

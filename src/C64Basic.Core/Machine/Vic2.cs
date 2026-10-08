@@ -16,12 +16,19 @@ public sealed partial class Vic2 : IMemoryMapped
         BorderRegister = 0x20, BackgroundRegister = 0x21, SpriteMulticolor0 = 0x25, SpriteMulticolor1 = 0x26,
         SpriteColor0 = 0x27;
 
-    /// <summary>PAL: 312 raster lines at 50 frames per second.</summary>
-    public const int RasterLines = 312, FramesPerSecond = 50;
+    /// <summary>PAL (6569): 312 raster lines of 63 CPU cycles, 19656 cycles per frame.</summary>
+    public const int RasterLines = 312, CyclesPerLine = 63, CyclesPerFrame = RasterLines * CyclesPerLine;
+
+    /// <summary>985248 / 19656, a little over 50 frames per second.</summary>
+    public static readonly double FramesPerSecond = Cia.ClockHz / CyclesPerFrame;
+
+    /// <summary>The time (in seconds on the bus clock) at which the beam is at a raster line and cycle (1-63) of the first frame.</summary>
+    public static double SecondsAt(int line, int cycle = 1) => (line * (long)CyclesPerLine + cycle - 1 + 0.5) / Cia.ClockHz;
 
     readonly Bus _bus;
     readonly byte[] _reg = new byte[RegisterCount];
-    int _rasterCompare, _lastRaster, _bank;
+    int _rasterCompare, _bank;
+    long _lastLine;
     byte _spriteSprite, _spriteBackground;
 
     /// <summary>The bus clock; the raster counter runs from it.</summary>
@@ -42,13 +49,59 @@ public sealed partial class Vic2 : IMemoryMapped
         _reg[SpriteMulticolor0] = 4;
         _reg[SpriteMulticolor1] = 0;
         for (int n = 0; n < 8; n++) _reg[SpriteColor0 + n] = (byte)(n < 7 ? n + 1 : 12);
+        _reg.CopyTo(_baseRegs, 0);
     }
 
     public int Border => _reg[BorderRegister] & 15;
     public int Background => _reg[BackgroundRegister] & 15;
 
+    long CurrentCycle => (long)Math.Floor(Seconds() * Cia.ClockHz);
+
+    /// <summary>Raster lines since power-on; the beam is on line <c>CurrentLine % 312</c> of frame <c>CurrentLine / 312</c>.</summary>
+    long CurrentLine => CurrentCycle / CyclesPerLine;
+
     /// <summary>The raster line (0-311) the beam is on right now.</summary>
-    public int Raster => (int)(Seconds() * FramesPerSecond * RasterLines % RasterLines);
+    public int Raster => (int)(CurrentLine % RasterLines);
+
+    /// <summary>The cycle (1-63) of the raster line the beam is in right now.</summary>
+    public int CycleInLine => (int)(CurrentCycle % CyclesPerLine) + 1;
+
+    bool IsBadLine(int line) =>
+        (_reg[Control1] & 0x10) != 0 && line is >= 0x30 and <= 0xF7 && (line & 7) == (_reg[Control1] & 7);
+
+    int SpritesOnLine(int line)
+    {
+        int count = 0;
+        for (int n = 0; n < 8; n++)
+        {
+            if ((_reg[SpriteEnable] >> n & 1) == 0) continue;
+            int ys = (_reg[SpriteExpandY] >> n & 1) + 1;
+            int raw = line - (_reg[n * 2 + 1] + 1);
+            if (raw >= 0 && raw < 21 * ys) count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// How many CPU cycles the VIC-II takes from the processor between two absolute cycles: about 40 on the first cycles of a
+    /// "bad line" (when it fetches the row of characters) and 2 per sprite, plus 1, shown on the next line.
+    /// </summary>
+    internal int StolenCycles(long from, long to)
+    {
+        int stolen = 0;
+        for (long n = from / CyclesPerLine; n <= to / CyclesPerLine; n++)
+        {
+            long badLine = n * CyclesPerLine + 12;                    // BA goes low at cycle 12 (the CPU stops at 15)
+            if (badLine > from && badLine <= to && IsBadLine((int)(n % RasterLines))) stolen += 40;
+            long spriteDma = n * CyclesPerLine + 55;                  // sprite data is fetched at the end of the line before
+            if (spriteDma > from && spriteDma <= to)
+            {
+                int sprites = SpritesOnLine((int)((n + 1) % RasterLines));
+                if (sprites > 0) stolen += 2 * sprites + 1;
+            }
+        }
+        return stolen;
+    }
 
     /// <summary>True while an enabled VIC interrupt source (raster, collisions) has its flag set: the IRQ line.</summary>
     public bool InterruptPending
@@ -63,18 +116,20 @@ public sealed partial class Vic2 : IMemoryMapped
         return r < RegisterCount ? r : -1;
     }
 
-    /// <summary>Sets the raster-compare flag if the beam passed the compare line since the last look.</summary>
+    /// <summary>Sets the raster-compare flag if the beam passed the start of the compare line since the last look.</summary>
     void PollRaster()
     {
-        int now = Raster;
-        if (now != _lastRaster)
+        long now = CurrentLine;
+        if (now == _lastLine) return;
+        if (now > _lastLine)
         {
-            bool crossed = now > _lastRaster
-                ? _rasterCompare > _lastRaster && _rasterCompare <= now
-                : _rasterCompare > _lastRaster || _rasterCompare <= now;
-            if (crossed) _reg[IrqFlags] |= 1;
-            _lastRaster = now;
+            long first = _lastLine + 1;
+            long span = now - first;
+            bool crossed = span >= RasterLines - 1
+                || (_rasterCompare - (int)(first % RasterLines) + RasterLines) % RasterLines <= span;
+            if (crossed && _rasterCompare < RasterLines) _reg[IrqFlags] |= 1;
         }
+        _lastLine = now;
     }
 
     public byte Read(int address)
@@ -129,6 +184,7 @@ public sealed partial class Vic2 : IMemoryMapped
             case Control1:
                 _rasterCompare = (_rasterCompare & 0xFF) | ((value & 0x80) << 1);
                 _reg[r] = (byte)(value & 0x7F);
+                LogWrite(r, _reg[r]);
                 return;
             case IrqFlags:
                 _reg[IrqFlags] = (byte)(_reg[IrqFlags] & ~value & 0x0F); // writing a 1 acknowledges that flag
@@ -138,6 +194,7 @@ public sealed partial class Vic2 : IMemoryMapped
                 return; // read-only
         }
         _reg[r] = value;
+        LogWrite(r, _reg[r]);
     }
 
     internal byte Reg(int r) => _reg[r];
@@ -154,7 +211,10 @@ public sealed partial class Vic2 : IMemoryMapped
         Machine.Bus.ReadExact(r, RegisterCount).CopyTo(_reg, 0);
         _rasterCompare = r.ReadInt32();
         _spriteSprite = r.ReadByte(); _spriteBackground = r.ReadByte();
-        _lastRaster = Raster;
+        _lastLine = CurrentLine;
+        _log.Clear();
+        _reg.CopyTo(_baseRegs, 0);
+        _baseLine = CurrentLine;
     }
 
     /// <summary>

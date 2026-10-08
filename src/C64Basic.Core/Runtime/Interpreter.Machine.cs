@@ -21,7 +21,7 @@ public sealed partial class Interpreter
 
     Cpu6502 CreateCpu()
     {
-        var cpu = new Cpu6502(_bus) { SystemIrq = SyncJiffies, Tick = CpuTick };
+        var cpu = new Cpu6502(_bus) { SystemIrq = SyncJiffies, Tick = CpuTick, CycleAccurate = true };
 
         // screen and keyboard
         cpu.Traps[0xFFD2] = c => { Write(Petscii.ToChar(c.A).ToString()); return TrapResult.Return; };           // CHROUT

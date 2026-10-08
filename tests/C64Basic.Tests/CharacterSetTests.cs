@@ -8,6 +8,8 @@ public class CharacterSetTests
 {
     static byte[] Glyph(byte[] rom, int set, int code) => rom[(set * 2048 + code * 8)..][..8];
 
+    static Bus Still() => new Bus { Seconds = () => 0 };
+
     static uint[] Render(Bus bus)
     {
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
@@ -58,7 +60,7 @@ public class CharacterSetTests
     [Fact]
     public void TheVicDrawsTheSelectedSet()
     {
-        var bus = new Bus();
+        var bus = Still();
         Array.Fill(bus.Ram, (byte)32, 1024, 1000);
         bus.Ram[1024] = 1;                                                 // screen code 1
         uint upper = Render(bus)[36 * Vic2.FrameWidth + 32 + 3];           // pixel (3,0): the top of an A
@@ -72,7 +74,7 @@ public class CharacterSetTests
     [Fact]
     public void ACharacterRomDumpReplacesTheBuiltInSet()
     {
-        var bus = new Bus();
+        var bus = Still();
         var rom = new byte[4096];
         rom[8] = 0xFF;                                                      // screen code 1, first row, solid
         bus.LoadCharacterRom(rom);

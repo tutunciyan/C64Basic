@@ -54,6 +54,13 @@ public sealed class Cpu6502
 
     bool _nmiActive;
 
+    /// <summary>
+    /// Cycle-exact mode for <see cref="Call"/>: the bus clock follows the instructions, interrupts are checked after every
+    /// instruction, and the VIC-II takes its cycles for bad lines and sprites. Off, interrupts are polled every 32 cycles and
+    /// time is the host's clock.
+    /// </summary>
+    public bool CycleAccurate { get; set; }
+
     public Cpu6502(Bus bus) => _bus = bus;
 
     // ---------- helpers ----------
@@ -86,6 +93,8 @@ public sealed class Cpu6502
         PC = address & 0xFFFF;
 
         long nextTick = Cycles + TickInterval, nextIrq = Cycles + IrqPollInterval;
+        int pollInterval = CycleAccurate ? 1 : IrqPollInterval;
+        if (CycleAccurate) _bus.FollowCycles(() => Cycles);
         try
         {
             while (StopReason == CpuStop.None)
@@ -93,13 +102,16 @@ public sealed class Cpu6502
                 if (PC == ReturnAddress) { StopReason = CpuStop.Returned; break; }
                 if (Cycles >= nextIrq)
                 {
-                    nextIrq = Cycles + IrqPollInterval;
+                    nextIrq = Cycles + pollInterval;
                     bool nmi = _bus.NmiLine;
                     if (nmi && !_nmiActive) Nmi(); // the NMI is edge-triggered and cannot be masked
                     _nmiActive = nmi;
                     if (!GetFlag(FlagI) && _bus.IrqLine) Irq();
                 }
+                long before = Cycles;
                 Step();
+                if (CycleAccurate && _bus.FollowingCycles && StopReason == CpuStop.None)
+                    Cycles += _bus.Vic.StolenCycles(_bus.AbsoluteCycleOf(before), _bus.AbsoluteCycleOf(Cycles));
                 if (Cycles >= nextTick)
                 {
                     nextTick = Cycles + TickInterval;
@@ -107,7 +119,11 @@ public sealed class Cpu6502
                 }
             }
         }
-        finally { SP = savedSp; }
+        finally
+        {
+            SP = savedSp;
+            if (CycleAccurate) _bus.ReleaseCycles();
+        }
         return StopReason;
     }
 

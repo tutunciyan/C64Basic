@@ -12,7 +12,7 @@ public class VicTests
     /// <summary>A bus whose screen is filled with spaces, so every cell shows plain background.</summary>
     static Bus NewBus()
     {
-        var bus = new Bus();
+        var bus = new Bus { Seconds = () => 0 };   // a still clock: the picture is the live registers, whatever the test machine's speed
         Array.Fill(bus.Ram, (byte)32, 1024, 1000);
         return bus;
     }

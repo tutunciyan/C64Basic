@@ -19,7 +19,9 @@ public static class Petscii
 
     public static char ToChar(int code) => IsGraphic(code) ? (char)(Base + code) : (char)code;
 
-    public static int ToCode(char c) => c >= Base && c < Base + 256 ? c - Base : c;
+    /// <summary>Code for ASC: typed lower-case letters are the upper-case PETSCII letters, as on a C64 in its default mode.</summary>
+    public static int ToCode(char c) =>
+        c >= Base && c < Base + 256 ? c - Base : c >= 'a' && c <= 'z' ? c - 32 : c;
 
     public static bool IsGlyph(char c) => c >= Base && c < Base + 256;
 

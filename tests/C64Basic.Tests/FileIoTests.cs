@@ -119,3 +119,29 @@ public class ScreenTests
         Assert.DoesNotContain("ERROR", output);
     }
 }
+
+public class CharRomTests
+{
+    [Fact]
+    public void RomIsHiddenUntilIoIsSwitchedOut() =>
+        Assert.Equal(" 0  30 \n", Basic.Run("PRINT PEEK(53248+10*8);:POKE 1,PEEK(1)AND251:PRINT PEEK(53248+10*8)"));
+
+    [Fact]
+    public void AscOfTypedLetterIsUpperCasePetscii() => Assert.Equal(" 74  74 \n", Basic.Run("PRINT ASC(\"j\");ASC(\"J\")"));
+
+    [Fact]
+    public void BannerPrintsBigLetters()
+    {
+        var output = Basic.Run(
+            "10 dim cr(5):poke1,peek(1)and251:mg$=\"hi\":gosub 200:end",
+            "200 fori=1tolen(mg$):cr(i)=asc(mid$(mg$,i,1))and191:nexti",
+            "210 for r=0 to 7:for c=1 to len(mg$):a=peek(53248+cr(c)*8+r)",
+            "240 for n=7 to 0 step-1:b(n)=int(a/2^n):a=a-(b(n)*2^n):next n",
+            "250 fort=0 to 7:print mid$(\" \"+chr$(113),1+b(7-t),1);:next t",
+            "260 next c:print:next r:return",
+            "RUN");
+        string ball = Petscii.ToChar(113).ToString();
+        // first row of H (66 66 66 -> .XX..XX.) then I (3C -> ..XXXX..)
+        Assert.StartsWith(" " + ball + ball + "  " + ball + ball + " " + "  " + ball + ball + ball + ball + "  \n", output);
+    }
+}

@@ -10,7 +10,7 @@ dotnet run --project src/C64Basic.Console -- --strict          # stock V2 only
 dotnet test
 ```
 
-Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--help`.
+Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
 ## Layout
@@ -63,6 +63,9 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   cursor row/column (214/211), text colour (646), border (53280) and background (53281). Typed letters show as
   upper case, as on a C64. Execution is paced at roughly 1500 statements/s so animations look right; use `--fast` to
   disable. PETSCII graphics from `CHR$` are drawn with Unicode box/block characters.
+- `PEEK(53248..57343)` reads the character ROM after `POKE 1,PEEK(1) AND 251` (upper-case/graphics set; screen codes 0-63
+  are exact, a few graphics are drawn, and the rest read as blank). `ASC` of a typed letter gives its upper-case PETSCII code.
+  Programs that rely on 40-column line wrapping (e.g. `samples/banner.bas`) run correctly, since the screen is 40 columns by default.
 
 ## Not implemented
 

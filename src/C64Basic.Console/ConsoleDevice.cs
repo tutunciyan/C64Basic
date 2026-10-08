@@ -12,11 +12,11 @@ sealed class ConsoleDevice : IConsoleDevice
 {
     readonly C64Screen? _screen;
 
-    public ConsoleDevice(bool emulateScreen)
+    public ConsoleDevice(bool emulateScreen, int width = 0)
     {
         try { System.Console.OutputEncoding = Encoding.UTF8; } catch (IOException) { }
         if (emulateScreen && !System.Console.IsOutputRedirected && !System.Console.IsInputRedirected)
-            _screen = new C64Screen();
+            _screen = new C64Screen(width);
 
         System.Console.CancelKeyPress += (_, e) =>
         {

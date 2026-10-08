@@ -53,7 +53,24 @@ public sealed partial class Interpreter
     Dictionary<string, (string Param, Expr Body)> _fns = new();
     readonly List<ForFrame> _forStack = new();
     readonly List<(int Line, int Stmt)> _gosubStack = new();
-    readonly byte[] _mem = new byte[65536];
+    readonly byte[] _mem = InitialMemory();
+
+    static byte[] InitialMemory()
+    {
+        var mem = new byte[65536];
+        mem[0] = 0x2F;      // CPU port direction
+        mem[1] = 0x37;      // BASIC, KERNAL and I/O visible
+        mem[56334] = 0x81;  // CIA 1 control register A
+        return mem;
+    }
+
+    /// <summary>PEEK, including the character ROM that replaces I/O at 53248-57343 when bit 2 of address 1 is clear.</summary>
+    int Peek(int address)
+    {
+        if (address >= CharRom.Start && address < CharRom.Start + CharRom.Length && (_mem[1] & 4) == 0 && (_mem[1] & 3) != 0)
+            return CharRom.Read(address);
+        return _mem[address];
+    }
     readonly Stopwatch _clock = Stopwatch.StartNew();
     double _clockOffsetSeconds;
     Random _rng = new();

@@ -283,7 +283,7 @@ public sealed partial class Interpreter
                     if (x < 0) _rng = new Random(unchecked((int)BitConverter.DoubleToInt64Bits(x)));
                     return Value.Num(_rng.NextDouble());
                 }
-            case "PEEK": return Value.Num(_mem[ToInt(Eval(f.Args[0]), 0, 65535)]);
+            case "PEEK": return Value.Num(Peek(ToInt(Eval(f.Args[0]), 0, 65535)));
             case "FRE": N(0); return Value.Num(BasicBytesFree);
             case "POS": N(0); return Value.Num(Col);
             case "USR": throw new BasicException(ErrorCode.IllegalQuantity);

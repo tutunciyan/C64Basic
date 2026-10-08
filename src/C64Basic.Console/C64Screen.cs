@@ -42,12 +42,16 @@ sealed class C64Screen
     int _ox, _oy, _bx, _by;    // terminal position of cell (0,0) and border thickness
     int _lastFg = -1, _lastBg = -1;
 
-    public C64Screen()
+    readonly bool _fixedWidth;
+
+    /// <param name="width">Fixed number of columns (at least 40), or 0 to use the whole terminal width.</param>
+    public C64Screen(int width = 0)
     {
         EnableVirtualTerminal();
-        int width = 0;
-        try { width = System.Console.WindowWidth; } catch (IOException) { }
-        _cols = Math.Max(PokeCols, width);
+        int termWidth = 0;
+        try { termWidth = System.Console.WindowWidth; } catch (IOException) { }
+        _fixedWidth = width > 0;
+        _cols = Math.Max(PokeCols, _fixedWidth ? width : termWidth);
         _code = new byte[Rows * _cols];
         _color = new byte[Rows * _cols];
         Array.Fill(_code, (byte)32);
@@ -75,12 +79,14 @@ sealed class C64Screen
 
     void Layout()
     {
-        int h = 0;
-        try { h = System.Console.WindowHeight; } catch (IOException) { }
-        _bx = 0;
+        int w = 0, h = 0;
+        try { w = System.Console.WindowWidth; h = System.Console.WindowHeight; } catch (IOException) { }
         _by = h >= Rows + 2 ? 1 : 0;
-        _ox = 0;
         _oy = _by;
+        // a fixed-width screen is centred with side borders, like a C64 on a monitor
+        _bx = _fixedWidth && w >= _cols + 4 ? 2 : 0;
+        _ox = _fixedWidth && w > _cols + 2 * _bx ? (w - _cols) / 2 : 0;
+        if (_ox < _bx) _ox = _bx;
     }
 
     void SetColors(int fg, int bg)

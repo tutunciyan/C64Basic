@@ -12,13 +12,23 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # no display or sound card on the runners: SDL's dummy drivers still exercise the whole window code path
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - run: dotnet build C64Basic.slnx --configuration Release
       - run: dotnet test tests/C64Basic.Tests --configuration Release --no-build
+      - name: GUI smoke test
+        shell: bash
+        run: |
+          dotnet run --project src/C64Basic.Gui --configuration Release --no-build -- \
+            --fast --snapshot smoke.bmp --type 'PRINT 6*7\n'
+          test "$(wc -c < smoke.bmp)" -gt 300000
 
   publish:
     # self-contained builds of the terminal and window versions, attached to a GitHub release when a v* tag is pushed
@@ -31,19 +41,30 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - run: >
+      - name: Publish the terminal version
+        run: >
           dotnet publish src/C64Basic.Console -c Release -r ${{ matrix.rid }} --self-contained
           -p:PublishSingleFile=true -o out/console
-      - run: >
-          dotnet publish src/C64Basic.Gui -c Release -r ${{ matrix.rid }} --self-contained
-          -o out/gui   # a folder, not a single file: SDL2 must sit next to the executable
+      - name: Publish the GUI (a folder, not a single file: SDL2 must sit next to the executable)
+        run: >
+          dotnet publish src/C64Basic.Gui -c Release -r ${{ matrix.rid }} --self-contained -o out/gui
+      - name: Smoke-test the Linux GUI build
+        if: matrix.rid == 'linux-x64'
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          chmod +x out/gui/C64Basic.Gui
+          out/gui/C64Basic.Gui --fast --snapshot smoke.bmp --type 'PRINT 6*7\n'
+          test "$(wc -c < smoke.bmp)" -gt 300000
       - run: |
           mkdir dist
           cp -r samples out/console/ && cp -r samples out/gui/
+          cp LICENSE out/console/ && cp LICENSE out/gui/
           (cd out/console && zip -r ../../dist/C64Basic-console-${{ matrix.rid }}.zip .)
           (cd out/gui && zip -r ../../dist/C64Basic-gui-${{ matrix.rid }}.zip .)
       - uses: softprops/action-gh-release@v2

@@ -160,4 +160,10 @@ joystick). The test suite runs them all headless.
 
 `dotnet test` runs the xUnit suite. Klaus Dormann's 6502 functional test runs too if `C64_6502_FUNCTIONAL_TEST` points at
 `6502_functional_test.bin` (not included: it is GPL). `.github/workflows/ci.yml` builds and tests on Linux and Windows, and a
-`v*` tag publishes self-contained terminal and GUI builds for win-x64, linux-x64 and osx-arm64 as release assets.
+`v*` tag publishes self-contained terminal and GUI builds for win-x64, linux-x64 and osx-arm64 as release assets. CI also starts
+the GUI with SDL's dummy video and audio drivers as a smoke test. What needs a real screen, keyboard and speakers is listed in
+[docs/GUI-CHECKLIST.md](docs/GUI-CHECKLIST.md).
+
+## License
+
+MIT, see [LICENSE](LICENSE). The C64 ROMs are not included and not needed.

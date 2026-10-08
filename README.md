@@ -14,12 +14,12 @@ There is also a windowed version with the real VIC-II picture, sprites, SID soun
 
 ```
 dotnet run --project src/C64Basic.Gui                          # a 40x25 C64 screen in a window
-dotnet run --project src/C64Basic.Gui -- --disk games.d64      # mount a disk image (or --tape x.t64)
+dotnet run --project src/C64Basic.Gui -- --disk games.d64      # mount a disk image (or --tape x.t64 / x.tap)
 ```
 
 See [The GUI](#the-gui) below. The terminal version's options:
 
-Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64>`, `--help`.
+Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64|file.tap>`, `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
 ## Layout
@@ -76,7 +76,20 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 - **Command channel** (`OPEN 15,8,15`): `PRINT#15,"S:name"` (scratch, wildcards), `R:new=old`, `N:name,id` (format), `V` (validate),
   `I`, `C:new=a,b` (copy/concatenate). `INPUT#15,E,E$,T,S` reads `00, OK,00,00` style status (`62, FILE NOT FOUND`, `63, FILE EXISTS`,
   `72, DISK FULL`, ...). A failed OPEN or LOAD of a missing file still raises `?FILE NOT FOUND`; other DOS errors only show in the status.
-- **Tape**: `--tape` mounts a `.t64` archive as device 1 (`LOAD "",1` loads the next program).
+- **Relative files** on a `.d64`: `OPEN 2,8,2,"NAME,L,"+CHR$(length)` creates one (or opens an existing one without `,L,`), with real
+  side sectors (six per file at most, 120 blocks each) and 1-254 byte records. `PRINT#15,"P"+CHR$(96+2)+CHR$(lo)+CHR$(hi)+CHR$(pos)`
+  positions it (records and bytes count from 1); `PRINT#`, `INPUT#` and `GET#` then work by record, a CR ends a record and the rest is
+  nulled, a record that was never written starts with `$FF`, and the drive reports 50 (record not present), 51 (overflow in record),
+  52 (file too large) and 72 (disk full). Host directories and tapes answer 64.
+- **Direct access** on a `.d64`: `OPEN 5,8,5,"#"` gives a 256-byte buffer channel. `U1`/`UA`/`B-R` read a block into it, `U2`/`UB`/`B-W`
+  write it back, `B-P` moves the pointer, `B-A` and `B-F` allocate and free blocks in the allocation map (error 65 names the next free
+  block). Arguments are channel, drive, track, sector, separated by spaces or commas; `B-R` leaves the pointer at 0 rather than at the
+  length byte. `M-R`/`M-W`/`M-E` (drive memory) are not supported.
+- **Tape**: `--tape` mounts a `.t64` archive or a `.tap` pulse image as device 1 (`LOAD "",1` loads the next program). A `.tap` is decoded
+  and encoded in the KERNAL's standard format (leader, countdown, 192-byte header, data block, each recorded twice, odd parity,
+  XOR checksum), taking the repeat when the first copy is damaged. Turbo loaders and other formats stay in the image but are not
+  decoded. A tape cannot be edited in place: SAVE appends (the newest program of a name wins when loading), scratch and rename
+  answer 26, and the `N:` command erases the whole tape.
 - The KERNAL `LOAD` ($FFD5) and `SAVE` ($FFD8) calls work from machine code through `SETLFS`/`SETNAM`.
 - `WAIT 198,n` waits for a key (works with a following `GET`); any other `WAIT` polls `PEEK` memory until RUN/STOP.
 - `SYS addr` runs machine code on a 6502 core (all documented opcodes plus the stable undocumented ones, with cycle counts,
@@ -134,14 +147,14 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 `Bus.Vic.Render` draws from it. So `POKE 53280` borders, sprites, bitmap and multicolour modes, custom character sets and
 `PEEK` of screen RAM all work, and machine code can drive the screen directly. SID audio plays through SDL.
 
-- Options: `--scale <1-8>`, `--fast` (start in warp mode), `--fullscreen`, `--strict`, `--disk [n=]<file.d64>`, `--tape <file.t64>`,
+- Options: `--scale <1-8>`, `--fast` (start in warp mode), `--fullscreen`, `--strict`, `--disk [n=]<file.d64>`, `--tape <file.t64|file.tap>`,
   a program to load and run, `--type <text>` and `--snapshot <file.bmp>` (for scripting and screenshots).
 - The prompt is the real screen editor: cursor keys move around, RETURN reads the logical line under the cursor (an old
   `LIST` line can be edited and re-entered), long lines wrap and are read back as one, DEL/INST work, the key buffer holds
   ten characters.
 - Keys: Esc = RUN/STOP, F1-F8, Home (Shift+Home clears), Ctrl+1-8 / Alt+1-8 pick the text colour, Ctrl+9/0 reverse on/off.
   The key matrix is live for machine code that scans `$DC00`/`$DC01`; the numpad is joystick port 2 (8/2/4/6, 0 = fire).
-  F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`,
+  F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
 - Character sets: the real ROM is copyrighted, so the built-in set is drawn in this project (C64-style letters and digits,
   hand-drawn graphics for screen codes 64-127, a lower-case set, reversed halves). Shift+Alt (Shift+Commodore) or
@@ -154,10 +167,12 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 
 ## Not implemented
 
-`USR` without a vector raises `?ILLEGAL QUANTITY`. Relative (`REL`) files, direct-access block commands (`U1`, `B-R`, ...),
-`.tap` pulse images and DOS errors beyond those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed
-above. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
-`LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64. A directory loaded with `LOAD "$"` keeps its lines in file order, so several files with the same block count each show up; typing a line number then replaces the first line with that number or goes in before the first larger one, like the real line editor.
+`USR` without a vector raises `?ILLEGAL QUANTITY`. Drive-memory commands (`M-R`, `M-W`, `M-E`), turbo-tape formats and DOS errors beyond
+those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed above. `PEEK` of screen RAM, colour RAM and the
+cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
+`LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64.
+A directory loaded with `LOAD "$"` keeps its lines in file order, so several files with the same block count each show up; typing a
+line number then replaces the first line with that number or goes in before the first larger one, like the real line editor.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause. The extension words `FIND`, `TRACE`, `RENUMBER` and `ELSE` can be used as variable names (the

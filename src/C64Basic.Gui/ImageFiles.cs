@@ -14,12 +14,21 @@ static class ImageFiles
         return blank;
     }
 
-    public static T64Image OpenTape(string path)
+    /// <summary>A <c>.tap</c> pulse image or, for any other name, a <c>.t64</c> archive.</summary>
+    public static IDiskDrive OpenTape(string path)
     {
         Action<byte[]> save = data => File.WriteAllBytes(path, data);
-        if (File.Exists(path)) return new T64Image(File.ReadAllBytes(path), save: save);
-        var blank = new T64Image(null, Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), save);
-        save(blank.ToArray());
-        return blank;
+        string title = Path.GetFileNameWithoutExtension(path).ToUpperInvariant();
+        bool exists = File.Exists(path);
+        byte[]? bytes = exists ? File.ReadAllBytes(path) : null;
+        if (path.EndsWith(".tap", StringComparison.OrdinalIgnoreCase))
+        {
+            var tap = new TapImage(bytes, title, save);
+            if (!exists) save(tap.ToArray());
+            return tap;
+        }
+        var t64 = new T64Image(bytes, title, save);
+        if (!exists) save(t64.ToArray());
+        return t64;
     }
 }

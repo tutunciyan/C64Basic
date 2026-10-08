@@ -258,6 +258,7 @@ static unsafe class SdlHost
                     console.Inject("\u0093" + "LOAD\"$\",8\rLIST\r");
                     break;
                 case ".t64":
+                case ".tap":
                     interpreter.MountDrive(1, ImageFiles.OpenTape(path));
                     break;
                 case ".prg":

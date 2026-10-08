@@ -17,7 +17,7 @@ const string Usage = """
                       0 = use the whole terminal width
       --fast          run at full speed instead of C64 speed
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
-      --tape <f>      mount a .t64 tape image as device 1 (a missing file is created empty)
+      --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
       -h, --help      show this help
     """;
 
@@ -101,11 +101,15 @@ static D64Image OpenDisk(string path)
     return blank;
 }
 
-static T64Image OpenTape(string path)
+static IDiskDrive OpenTape(string path)
 {
     Action<byte[]> save = data => File.WriteAllBytes(path, data);
-    if (File.Exists(path)) return new T64Image(File.ReadAllBytes(path), save: save);
-    var blank = new T64Image(null, Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), save);
-    save(blank.ToArray());
-    return blank;
+    string title = Path.GetFileNameWithoutExtension(path).ToUpperInvariant();
+    bool pulses = path.EndsWith(".tap", StringComparison.OrdinalIgnoreCase);
+    bool exists = File.Exists(path);
+    IDiskDrive tape = pulses
+        ? new TapImage(exists ? File.ReadAllBytes(path) : null, title, save)
+        : new T64Image(exists ? File.ReadAllBytes(path) : null, title, save);
+    if (!exists) save(tape is TapImage t ? t.ToArray() : ((T64Image)tape).ToArray());
+    return tape;
 }

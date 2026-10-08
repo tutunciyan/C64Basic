@@ -20,7 +20,7 @@ const string Usage = """
       --type <text>   type this text at startup (\n = RETURN)
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
-      --tape <f>      mount a .t64 tape image as device 1
+      --tape <f>      mount a .t64 or .tap tape image as device 1
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       -h, --help      show this help
 

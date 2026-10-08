@@ -85,6 +85,13 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
 
     public string GetKey() => _keys.TryDequeue(out char key) ? key.ToString() : "";
 
+    /// <summary>Shift+Commodore: switches between the upper-case/graphics and the lower-case character sets.</summary>
+    public void ToggleCharacterSet()
+    {
+        if (_editor == null) return;
+        lock (_screenLock) _editor.LowerCase = !_editor.LowerCase;
+    }
+
     // ---------- keyboard buffer (host side) ----------
     /// <summary>A typed character: a printable character or a control code such as CHR$(13) or a cursor key.</summary>
     public void Type(char key)

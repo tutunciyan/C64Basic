@@ -11,7 +11,7 @@ namespace C64Basic.Core.Machine;
 public sealed class ScreenEditor
 {
     public const int Columns = 40, Rows = 25, ScreenRam = 1024;
-    const int CursorRow = 214, CursorColumn = 211, TextColor = 646, ReverseFlag = 199;
+    const int CursorRow = 214, CursorColumn = 211, TextColor = 646, ReverseFlag = 199, QuoteFlag = 212;
 
     static readonly Dictionary<char, int> ColorCodes = new()
     {
@@ -35,6 +35,19 @@ public sealed class ScreenEditor
     public int Row { get => Math.Min((int)_bus.Ram[CursorRow], Rows - 1); set => _bus.Ram[CursorRow] = (byte)value; }
     public int Column { get => Math.Min((int)_bus.Ram[CursorColumn], Columns - 1); set => _bus.Ram[CursorColumn] = (byte)value; }
     int Color => _bus.Ram[TextColor] & 15;
+    /// <summary>
+    /// Quote mode: after an opening quote, control codes are shown as reverse-video symbols instead of being obeyed,
+    /// so they can be typed into strings. It ends at RETURN or at the closing quote.
+    /// </summary>
+    public bool Quote { get => _bus.Ram[QuoteFlag] != 0; private set => _bus.Ram[QuoteFlag] = (byte)(value ? 1 : 0); }
+
+    /// <summary>True while the lower-case character set is selected ($D018 bit 1).</summary>
+    public bool LowerCase
+    {
+        get => (_bus.Vic.Read(0xD018) & 2) != 0;
+        set => _bus.Vic.Write(0xD018, (byte)((_bus.Vic.Read(0xD018) & ~2) | (value ? 2 : 0)));
+    }
+
     bool Reverse { get => _bus.Ram[ReverseFlag] != 0; set => _bus.Ram[ReverseFlag] = (byte)(value ? 1 : 0); }
 
     // ---------- conversions ----------
@@ -72,9 +85,12 @@ public sealed class ScreenEditor
     {
         foreach (char c in text)
         {
+            if (Quote && IsQuotedControl(c)) { Put(QuotedScreenCode(c)); continue; }
             switch (c)
             {
-                case '\n': case '\r': Reverse = false; NewLine(); break;
+                case '\n': case '\r': case '\u008d': Reverse = false; Quote = false; NewLine(); break;
+                case '\u000e': LowerCase = true; break;
+                case '\u008e': LowerCase = false; break;
                 case '\u0093': Clear(); break;
                 case '\u0013': Row = 0; Column = 0; break;
                 case '\u0011': CursorDown(); break;
@@ -87,11 +103,22 @@ public sealed class ScreenEditor
                 case '\u0094': Insert(); break;
                 default:
                     if (ColorCodes.TryGetValue(c, out int color)) _bus.Ram[TextColor] = (byte)color;
-                    else if (c >= ' ' && !(c >= '\u0080' && c <= '\u009f')) Put(ToScreenCode(c) + (Reverse ? 128 : 0));
+                    else if (c >= ' ' && !(c >= '\u0080' && c <= '\u009f'))
+                    {
+                        Put(ToScreenCode(c) + (Reverse ? 128 : 0));
+                        if (c == '"') Quote = !Quote;
+                    }
                     break;
             }
         }
     }
+
+    /// <summary>Control codes a quote shows as symbols; RETURN, DEL and INST keep working inside quotes.</summary>
+    static bool IsQuotedControl(char c) =>
+        (c < ' ' || (c >= '\u0080' && c <= '\u009f')) && c is not ('\r' or '\n' or '\u008d' or '\u0014' or '\u0094');
+
+    /// <summary>The reverse-video screen code a control code is drawn with inside quotes.</summary>
+    static int QuotedScreenCode(char c) => c < ' ' ? c + 128 : c + 64;
 
     void Put(int code)
     {
@@ -177,6 +204,7 @@ public sealed class ScreenEditor
         Array.Fill(_bus.Ram, (byte)32, ScreenRam, Rows * Columns);
         Array.Fill(_bus.Color.Data, (byte)Color, 0, Rows * Columns);
         Array.Clear(_continues);
+        Quote = false;
         Row = 0;
         Column = 0;
     }
@@ -198,12 +226,25 @@ public sealed class ScreenEditor
         if (startRow >= first && startRow <= last) from = startRow * Columns + startColumn;
 
         var sb = new StringBuilder();
-        for (int i = from; i < (last + 1) * Columns; i++) sb.Append(FromScreenCode(_bus.Ram[ScreenRam + i]));
+        bool quoted = false;
+        for (int i = from; i < (last + 1) * Columns; i++)
+        {
+            int code = _bus.Ram[ScreenRam + i];
+            // inside quotes the reverse symbols stand for the control codes that were typed
+            if (quoted && code is >= 128 and <= 159) sb.Append((char)(code - 128));
+            else if (quoted && code is >= 192 and <= 223) sb.Append((char)(code - 64));
+            else
+            {
+                if ((code & 0x7F) == '"') quoted = !quoted;
+                sb.Append(FromScreenCode(code));
+            }
+        }
         string line = sb.ToString().TrimEnd(' ');
 
         Row = last;
         Column = 0;
         Reverse = false;
+        Quote = false;
         Advance(linked: false);
         return line;
     }

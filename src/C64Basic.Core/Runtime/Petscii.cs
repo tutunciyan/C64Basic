@@ -23,6 +23,13 @@ public static class Petscii
     public static int ToCode(char c) =>
         c >= Base && c < Base + 256 ? c - Base : c >= 'a' && c <= 'z' ? c - 32 : c;
 
+    /// <summary>
+    /// What Shift+letter types on a C64: PETSCII 193-218, a graphics symbol in the first character set and the capital
+    /// letter in the lower-case set. Other characters come back unchanged.
+    /// </summary>
+    public static char ShiftedLetter(char c) =>
+        c is >= 'A' and <= 'Z' ? ToChar(193 + (c - 'A')) : c is >= 'a' and <= 'z' ? ToChar(193 + (c - 'a')) : c;
+
     public static bool IsGlyph(char c) => c >= Base && c < Base + 256;
 
     /// <summary>The Unicode character that best draws a PETSCII graphics character.</summary>

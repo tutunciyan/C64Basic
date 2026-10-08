@@ -151,7 +151,7 @@ public sealed partial class Vic2 : IMemoryMapped
         int bank = _bank;
         address14 &= 0x3FFF;
         if ((bank & 1) == 0 && address14 >= 0x1000 && address14 < 0x2000)
-            return Runtime.CharRom.Read(0xD000 + address14 - 0x1000);
+            return _bus.CharacterRom[address14 - 0x1000];
         return _bus.Ram[(bank << 14) | address14];
     }
 }

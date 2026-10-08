@@ -181,6 +181,11 @@ static unsafe class SdlHost
             return true;
         }
 
+        // Shift+Commodore (Alt) switches the character set, as on a real C64
+        bool isShift = code is Scancode.ScancodeLshift or Scancode.ScancodeRshift;
+        bool isCommodore = code is Scancode.ScancodeLalt or Scancode.ScancodeRalt;
+        if (!repeat && ((isShift && alt) || (isCommodore && shift))) console.ToggleCharacterSet();
+
         if (!repeat && KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) console.SetKey(k, true);
 
@@ -208,8 +213,13 @@ static unsafe class SdlHost
     static void TextInput(TextInputEvent text, ScreenConsole console)
     {
         string typed = Marshal.PtrToStringUTF8((nint)text.Text) ?? "";
+        // Shift+letter is a graphics symbol on a C64 (a capital in the lower-case set), as on the real keyboard
+        bool shift = (Sdl.GetModState() & Keymod.Shift) != 0;
         foreach (char c in typed)
-            if (c >= ' ' && c < '\u007f' || c == '£') console.Type(c);
+        {
+            if (c < ' ' || (c >= '\u007f' && c != '£')) continue;
+            console.Type(shift ? Petscii.ShiftedLetter(c) : c);
+        }
     }
 
     // ---------- window ----------

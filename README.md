@@ -134,8 +134,14 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
   The key matrix is live for machine code that scans `$DC00`/`$DC01`; the numpad is joystick port 2 (8/2/4/6, 0 = fire).
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`,
   `.prg` or `.bas` file on the window mounts or loads it.
-- Limits: the character ROM only has the shapes listed above (no lower-case set, most PETSCII graphics are blank), there is
-  no quote mode (control keys act at once), no Shift+letter graphics, and no gamepad or port 1 joystick.
+- Character sets: the real ROM is copyrighted, so the built-in set is drawn in this project (C64-style letters and digits,
+  hand-drawn graphics for screen codes 64-127, a lower-case set, reversed halves). Shift+Alt (Shift+Commodore) or
+  `PRINT CHR$(14)` / `CHR$(142)` switches between the upper-case/graphics and lower-case sets (`$D018` bit 1). To use the
+  real glyphs, pass a 4096-byte dump with `--chargen <file>`. `Bus.LoadCharacterRom` does the same in code.
+- Typing is like the real keyboard: Shift+letter gives a graphics symbol (a capital in the lower-case set), and quote mode
+  works. After an opening quote control keys (colours, cursor, CLR) show as reverse symbols and read back as the codes, so
+  `PRINT "<Ctrl+2>HELLO"` can be typed. RETURN or the closing quote ends it.
+- Limits: the graphics are approximations of the real shapes, and there is no gamepad or port 1 joystick.
 
 ## Not implemented
 

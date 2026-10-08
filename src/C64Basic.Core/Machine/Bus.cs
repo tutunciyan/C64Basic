@@ -25,6 +25,16 @@ public sealed class Bus
     public Vic2 Vic { get; }
     public Sid Sound { get; } = new();
     public ColorRam Color { get; } = new();
+    /// <summary>The character generator ROM (4096 bytes) the CPU reads at 53248 and the VIC-II draws from.</summary>
+    public byte[] CharacterRom { get; private set; } = CharRom.CreateDefault();
+
+    /// <summary>Replaces the built-in character set with a dump of the real 4096-byte ROM.</summary>
+    public void LoadCharacterRom(byte[] rom)
+    {
+        if (rom.Length != CharRom.Length) throw new ArgumentException($"a character ROM is {CharRom.Length} bytes, not {rom.Length}", nameof(rom));
+        CharacterRom = (byte[])rom.Clone();
+    }
+
     public Cia1 Cia1 { get; }
     public Cia2 Cia2 { get; }
 
@@ -95,7 +105,7 @@ public sealed class Bus
     {
         if (InIoArea(address))
         {
-            if (CharRomVisible) return CharRom.Read(address);
+            if (CharRomVisible) return CharacterRom[address - IoStart];
             if (IoVisible) return _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
         }
         if (Input != null && (address == 197 || address == 653)) return Keyboard.Read(Input, address);

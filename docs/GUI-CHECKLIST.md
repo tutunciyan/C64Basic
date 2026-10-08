@@ -12,7 +12,8 @@ and tick them off. Note the OS and the result.
 - [ ] F12 writes `c64-<time>.bmp` that opens in a viewer.
 
 ## Keyboard
-- [ ] Letters, digits and punctuation type; lower case shows as upper case.
+- [ ] Letters, digits and punctuation type; unshifted letters show as capitals, Shift+letter as graphics symbols.
+- [ ] Shift+Alt switches to the lower-case set and back; `PRINT "Hello"` then reads as mixed case. Type `"` then Ctrl+2: a reverse symbol appears and the colour does not change.
 - [ ] Backspace deletes, Insert inserts, Home homes, Shift+Home clears, arrow keys move the cursor.
 - [ ] Move the cursor up onto a `LIST` line, edit it, press Enter: the new line replaces the old one.
 - [ ] A line of 60+ characters wraps and still runs.

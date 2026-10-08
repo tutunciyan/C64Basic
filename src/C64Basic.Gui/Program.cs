@@ -21,16 +21,17 @@ const string Usage = """
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 tape image as device 1
+      --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       -h, --help      show this help
 
-    Keys: Esc = RUN/STOP, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
+    Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
           F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp).
           Drop a .d64, .t64, .prg or .bas file on the window to mount or load it.
     """;
 
 bool strict = false, fast = false, fullscreen = false;
 int scale = 3;
-string? program = null, tape = null, typeText = null, snapshot = null;
+string? program = null, tape = null, typeText = null, snapshot = null, chargen = null;
 var disks = new List<(int Device, string Path)>();
 
 for (int i = 0; i < args.Length; i++)
@@ -62,6 +63,10 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length) { Console.Error.WriteLine("--snapshot needs a file name"); return 2; }
             snapshot = args[i];
             break;
+        case "--chargen":
+            if (++i >= args.Length) { Console.Error.WriteLine("--chargen needs a ROM file"); return 2; }
+            chargen = args[i];
+            break;
         case "--tape":
             if (++i >= args.Length) { Console.Error.WriteLine("--tape needs an image file"); return 2; }
             tape = args[i];
@@ -86,6 +91,16 @@ catch (Exception e) when (e is IOException or InvalidDataException or Unauthoriz
 {
     Console.Error.WriteLine(e.Message);
     return 1;
+}
+
+if (chargen != null)
+{
+    try { interpreter.Bus.LoadCharacterRom(File.ReadAllBytes(chargen)); }
+    catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"--chargen: {e.Message}");
+        return 1;
+    }
 }
 
 var repl = new Repl(interpreter, screen);

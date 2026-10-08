@@ -70,7 +70,7 @@ sealed class C64Screen
     [DllImport("kernel32.dll")] static extern bool GetConsoleMode(IntPtr h, out uint mode);
     [DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h, uint mode);
 
-    static void EnableVirtualTerminal()
+    internal static void EnableVirtualTerminal()
     {
         if (!OperatingSystem.IsWindows()) return;
         try

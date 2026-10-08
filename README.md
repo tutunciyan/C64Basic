@@ -19,7 +19,7 @@ dotnet run --project src/C64Basic.Gui -- --disk games.d64      # mount a disk im
 
 See [The GUI](#the-gui) below. The terminal version's options:
 
-Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64|file.tap>`, `--help`.
+Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--pixels` (the real VIC-II picture in the terminal, see below), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64|file.tap>`, `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
 ## Layout
@@ -139,6 +139,16 @@ the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `I
 `PEEK(197)` gives the KERNAL key index (64 = none) and `PEEK(653)` the shift/C=/CTRL flags. The jiffy clock at
 160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. The PB6/PB7 timer outputs, the serial
 shift register and TOD alarms are not modelled, and the terminal front end does not supply input.
+
+## The picture in a terminal (`--pixels`)
+
+`dotnet run --project src/C64Basic.Console -- --pixels` draws the real VIC-II frame in the terminal: every frame (15 per second) is
+shrunk to fit the window (never enlarged) and shown with upper half blocks in true colour, so sprites, bitmap and multicolour modes,
+custom character sets and colour effects appear. Text is only legible when the terminal is big enough (about 130 columns and 40 rows
+for readable text; a smaller one still shows graphics clearly). It uses the same screen editor, keyboard buffer and cursor as the GUI,
+so the prompt works the same way: arrows, Home (Shift+Home clears), Backspace/Delete, Insert, F1-F8, Ctrl/Alt+1-8 for colours. Esc
+is RUN/STOP, Ctrl+C breaks too, and Ctrl+D quits. A terminal paste types as fast as it arrives. The terminal version has no sound and
+no key matrix or joystick for machine code; those are in the GUI. Without `--pixels` the terminal shows the faster text-only screen.
 
 ## The GUI
 

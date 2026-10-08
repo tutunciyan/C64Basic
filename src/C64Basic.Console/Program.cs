@@ -16,12 +16,14 @@ const string Usage = """
       --width <n>     emulated screen columns, centred with a border (default 40, like a real C64);
                       0 = use the whole terminal width
       --fast          run at full speed instead of C64 speed
+      --pixels        draw the real VIC-II picture (sprites, graphics modes) with half blocks instead of the text-only screen;
+                      Esc = RUN/STOP, Ctrl+D quits; no sound (use the GUI)
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
       -h, --help      show this help
     """;
 
-bool strict = false, plain = false, fast = false;
+bool strict = false, plain = false, fast = false, pixels = false;
 int? width = null;
 string? file = null;
 var disks = new List<(int Device, string Path)>();
@@ -34,6 +36,7 @@ for (int i = 0; i < args.Length; i++)
         case "--strict": strict = true; break;
         case "--plain": plain = true; break;
         case "--fast": fast = true; break;
+        case "--pixels": pixels = true; break;
         case "--width":
             if (++i >= args.Length || !int.TryParse(args[i], out int w) || (w != 0 && w < 40))
             { System.Console.Error.WriteLine("--width needs 0 (terminal width) or a number of at least 40"); return 2; }
@@ -66,8 +69,17 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
-var device = new ConsoleDevice(emulateScreen: !plain, width ?? 40);
-var interpreter = new Interpreter(device, new HostFileSystem(), new InterpreterOptions { Strict = strict, StatementsPerSecond = device.HasScreen && !fast ? 1500 : 0 });
+if (pixels && !PixelTerminal.Available)
+{
+    System.Console.Error.WriteLine("--pixels needs a terminal (input and output must not be redirected)");
+    return 2;
+}
+
+ScreenConsole? pixelConsole = pixels ? new ScreenConsole() : null;
+ConsoleDevice? device = pixels ? null : new ConsoleDevice(emulateScreen: !plain, width ?? 40);
+IConsoleDevice console = (IConsoleDevice?)pixelConsole ?? device!;
+bool paced = pixels || device!.HasScreen;
+var interpreter = new Interpreter(console, new HostFileSystem(), new InterpreterOptions { Strict = strict, StatementsPerSecond = paced && !fast ? 1500 : 0 });
 try
 {
     foreach (var (dev, path) in disks) interpreter.MountDrive(dev, OpenDisk(path));
@@ -75,21 +87,30 @@ try
 }
 catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
 {
-    device.Restore();
+    device?.Restore();
     System.Console.Error.WriteLine(e.Message);
     return 1;
 }
-var repl = new Repl(interpreter, device);
+var repl = new Repl(interpreter, console);
 
+PixelTerminal? view = pixelConsole != null ? new PixelTerminal(interpreter, pixelConsole) : null;
 try
 {
-    if (file != null) return repl.RunFile(file) ? 0 : 1;
+    view?.Start();
+    if (file != null)
+    {
+        bool ok = repl.RunFile(file);
+        if (!pixels) return ok ? 0 : 1;
+        repl.Resume();   // the picture stays up: carry on at the prompt, like the GUI
+        return ok ? 0 : 1;
+    }
     repl.Run();
     return 0;
 }
 finally
 {
-    device.Restore();
+    view?.Stop();
+    device?.Restore();
 }
 
 static D64Image OpenDisk(string path)

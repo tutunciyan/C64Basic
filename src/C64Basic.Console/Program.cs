@@ -77,7 +77,7 @@ if (pixels && !PixelTerminal.Available)
 
 ScreenConsole? pixelConsole = pixels ? new ScreenConsole() : null;
 ConsoleDevice? device = pixels ? null : new ConsoleDevice(emulateScreen: !plain, width ?? 40);
-IConsoleDevice console = (IConsoleDevice?)pixelConsole ?? device!;
+IConsoleDevice console = pixelConsole != null ? pixelConsole : plain ? new ShadowScreenConsole(device!) : device!;
 bool paced = pixels || device!.HasScreen;
 var interpreter = new Interpreter(console, new HostFileSystem(), new InterpreterOptions { Strict = strict, StatementsPerSecond = paced && !fast ? 1500 : 0 });
 try

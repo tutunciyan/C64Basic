@@ -76,6 +76,9 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 - **Command channel** (`OPEN 15,8,15`): `PRINT#15,"S:name"` (scratch, wildcards), `R:new=old`, `N:name,id` (format), `V` (validate),
   `I`, `C:new=a,b` (copy/concatenate). `INPUT#15,E,E$,T,S` reads `00, OK,00,00` style status (`62, FILE NOT FOUND`, `63, FILE EXISTS`,
   `72, DISK FULL`, ...). A failed OPEN or LOAD of a missing file still raises `?FILE NOT FOUND`; other DOS errors only show in the status.
+  OPEN follows the drive: reading a file that is still open for writing gives `60, WRITE FILE OPEN`, writing a name that exists gives
+  `63, FILE EXISTS` unless it starts with `@0:` (a host directory has always overwritten, and still does), and a type letter that
+  does not match the file (`NAME,S,R` on a program) gives `64, FILE TYPE MISMATCH`. Nothing is written for a refused OPEN.
 - **Relative files** on a `.d64`: `OPEN 2,8,2,"NAME,L,"+CHR$(length)` creates one (or opens an existing one without `,L,`), with real
   side sectors (six per file at most, 120 blocks each) and 1-254 byte records. `PRINT#15,"P"+CHR$(96+2)+CHR$(lo)+CHR$(hi)+CHR$(pos)`
   positions it (records and bytes count from 1); `PRINT#`, `INPUT#` and `GET#` then work by record, a CR ends a record and the rest is
@@ -84,7 +87,9 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 - **Direct access** on a `.d64`: `OPEN 5,8,5,"#"` gives a 256-byte buffer channel. `U1`/`UA`/`B-R` read a block into it, `U2`/`UB`/`B-W`
   write it back, `B-P` moves the pointer, `B-A` and `B-F` allocate and free blocks in the allocation map (error 65 names the next free
   block). Arguments are channel, drive, track, sector, separated by spaces or commas; `B-R` leaves the pointer at 0 rather than at the
-  length byte. `M-R`/`M-W`/`M-E` (drive memory) are not supported.
+  length byte. `M-W` writes 2 KB of drive RAM (mirrored every 2 KB up to $1FFF, at most 34 bytes per command) and `M-R` reads it back
+  through the command channel (`GET#15,A$`, one byte unless a count is given; afterwards the channel reports the status again). The ROM
+  area reads as zero, and `M-E` answers `31, SYNTAX ERROR` because there is no drive processor to run code.
 - **Tape**: `--tape` mounts a `.t64` archive or a `.tap` pulse image as device 1 (`LOAD "",1` loads the next program). A `.tap` is decoded
   and encoded in the KERNAL's standard format (leader, countdown, 192-byte header, data block, each recorded twice, odd parity,
   XOR checksum), taking the repeat when the first copy is damaged. Turbo loaders and other formats stay in the image but are not
@@ -199,7 +204,7 @@ no key matrix or joystick for machine code; those are in the GUI. Without `--pix
 
 `USR` without a vector raises `?ILLEGAL QUANTITY`. Drive-memory commands (`M-R`, `M-W`, `M-E`), turbo-tape formats and DOS errors beyond
 those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed above. `PEEK` of screen RAM, colour RAM and the
-cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
+cursor (214/211) see printed text everywhere, including `--plain`, which keeps a hidden screen behind the text stream (typed input is not echoed into it).
 `LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64.
 A directory loaded with `LOAD "$"` keeps its lines in file order, so several files with the same block count each show up; typing a
 line number then replaces the first line with that number or goes in before the first larger one, like the real line editor.

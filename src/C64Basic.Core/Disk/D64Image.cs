@@ -7,7 +7,7 @@ namespace C64Basic.Core.Disk;
 /// from 18/1, files as chains of sectors. Reads and writes the real on-disk structures. Every change is passed to
 /// <c>save</c> so the host can write the image back.
 /// </summary>
-public sealed class D64Image : IDiskDrive
+public sealed partial class D64Image : IDiskDrive
 {
     public const int Size = 174848, Tracks = 35, DirTrack = 18, BamSector = 0;
 
@@ -246,6 +246,7 @@ public sealed class D64Image : IDiskDrive
 
     void FreeChain(Span<byte> entry)
     {
+        if ((entry[2] & 7) == RelType) FreeSideChain(entry);
         int track = entry[3], sector = entry[4], guard = 0;
         while (track != 0 && guard++ <= Tracks * 21)
         {
@@ -358,6 +359,7 @@ public sealed class D64Image : IDiskDrive
         {
             var e = EntryAt(slot);
             if (e[2] == 0) continue;
+            if ((e[2] & 7) == RelType) MarkSideChain(e);
             int t = e[3], sc = e[4], g = 0;
             while (t != 0 && g++ <= Tracks * 21)
             {

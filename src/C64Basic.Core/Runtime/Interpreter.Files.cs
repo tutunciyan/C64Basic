@@ -13,6 +13,16 @@ sealed class BasicFile
     public int Secondary;
     /// <summary>The 256-byte buffer of a direct-access channel (OPEN n,8,n,"#"); <see cref="Pos"/> is its pointer.</summary>
     public byte[]? Block;
+
+    // relative files: the file, the current record and byte (0-based), the record being read, and the bytes written so far
+    public IRelFile? Rel;
+    public int RelRecord, RelPos;
+    public byte[]? RelData;
+    public readonly List<byte> RelOut = new();
+    public bool RelPendingCr;
+
+    /// <summary>A position command was just run: the CR that PRINT# sends after it is not an (empty) command.</summary>
+    public bool SkipCommandCr;
     public FileKind Kind;
     public string Path = "";
     public bool Writing, Append;
@@ -101,6 +111,10 @@ public sealed partial class Interpreter
         string spec = name.Trim();
         if (spec.StartsWith('@')) spec = spec[1..];
         if (spec.Length >= 2 && spec[1] == ':' && char.IsAsciiDigit(spec[0])) spec = spec[2..];
+        // the record length is a raw character after ",L,", so this spec must not be trimmed
+        string raw = name.TrimStart().TrimStart('@');
+        if (raw.Length >= 2 && raw[1] == ':' && char.IsAsciiDigit(raw[0])) raw = raw[2..];
+        if (TryOpenRel(f, raw, sa)) return;
         var parts = spec.Split(',');
         string path = parts[0].Trim();
         if (path.Length == 0) throw new BasicException(ErrorCode.MissingFileName);
@@ -147,9 +161,10 @@ public sealed partial class Interpreter
         if (!_files.Remove(n, out var f)) return; // closing a closed file is not an error
         if (_cmdFile == f) _cmdFile = null;
         if (_kernalInput == f) _kernalInput = null;
+        CommitRelRecord(f, terminated: false);
         switch (f.Kind)
         {
-            case FileKind.Disk when f.Writing:
+            case FileKind.Disk when f.Writing && f.Rel == null && f.Block == null:
                 try
                 {
                     DriveFor(f.Device).WriteText(f.Path, f.Buffer.ToString(), replace: true);
@@ -188,6 +203,7 @@ public sealed partial class Interpreter
     {
         if (f.Kind == FileKind.Screen) { Write(s.Replace('\r', '\n')); return; }
         if (f.Kind == FileKind.Command) { CommandInput(f, s); return; }
+        if (f.Rel != null) { RelWrite(f, s); return; }
         if (f.Block != null)
         {
             foreach (char c in s)
@@ -209,6 +225,7 @@ public sealed partial class Interpreter
             f.Text = line + "\r";
             f.Pos = 0;
         }
+        if (f.Rel != null) return RelReadChar(f);
         if (f.Block != null)
         {
             if (f.Pos >= 256) { _st = 64; return -1; }
@@ -216,6 +233,8 @@ public sealed partial class Interpreter
             if (f.Pos >= 256) _st = 64;
             return ch;
         }
+        // the error channel reports the drive's current status, which may have changed since OPEN
+        if (f.Kind == FileKind.Command && f.Pos == 0) f.Text = StatusOf(f.Device) + "\r";
         if (f.Kind == FileKind.Command && f.Pos >= f.Text.Length)
         {
             // the status was read: the channel goes back to reporting "00, OK"
@@ -231,7 +250,7 @@ public sealed partial class Interpreter
 
     static void RequireInput(BasicFile f)
     {
-        if (f.Writing && f.Kind != FileKind.Command && f.Block == null) throw new BasicException(ErrorCode.NotInputFile);
+        if (f.Writing && f.Kind != FileKind.Command && f.Block == null && f.Rel == null) throw new BasicException(ErrorCode.NotInputFile);
     }
 
     static bool IsStrTarget(Expr t) => t is VarRef { Type: VarType.Str } or ArrayRef { Type: VarType.Str };

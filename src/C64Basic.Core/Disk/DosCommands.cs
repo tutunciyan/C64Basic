@@ -6,10 +6,12 @@ public static class DosCommands
     /// <summary>Runs one command such as <c>S0:OLD</c> or <c>R:NEW=OLD</c> and returns the status the drive would report.</summary>
     public static DriveStatus Execute(IDiskDrive drive, string command, IBlockChannels? channels = null)
     {
-        command = command.Trim('\r', '\n', ' ');
+        bool position = command.Length > 0 && char.ToUpperInvariant(command[0]) == 'P';
+        if (!position) command = command.Trim('\r', '\n', ' '); // the P command carries raw bytes, which may look like spaces
         if (command.Length == 0) return DriveStatus.Ok;
         try
         {
+            if (position) return PositionCommand(command, channels);
             if (BlockCommand(drive, command, channels) is { } blockResult) return blockResult;
             int colon = command.IndexOf(':');
             string verb = (colon >= 0 ? command[..colon] : command).Trim().ToUpperInvariant();
@@ -69,6 +71,18 @@ public static class DosCommands
         {
             return DriveStatus.Of(e.Code, e.Track, e.Sector);
         }
+    }
+
+    /// <summary>P + channel + record low + record high [+ position]: for the channel, usually CHR$(96 + secondary address).</summary>
+    static DriveStatus PositionCommand(string command, IBlockChannels? channels)
+    {
+        if (command.Length < 4) return DriveStatus.Of(30);
+        // the characters stand for bytes (CHR$ values above 95 arrive as PETSCII graphics characters)
+        int channel = DosText.ToByte(command[1]);
+        if (channel >= 96) channel -= 96;
+        int record = DosText.ToByte(command[2]) | DosText.ToByte(command[3]) << 8;
+        int position = command.Length > 4 ? DosText.ToByte(command[4]) : 1;
+        return channels?.Position(channel, record, position) ?? throw new DriveException(70);
     }
 
     static readonly string[] BlockVerbs = { "U1", "UA", "U2", "UB", "B-R", "B-W", "B-P", "B-A", "B-F" };

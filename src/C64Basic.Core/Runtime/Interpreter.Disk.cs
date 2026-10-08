@@ -258,6 +258,8 @@ public sealed partial class Interpreter
         {
             if (Find(channel) is { } f) f.Pos = pointer;
         }
+
+        public DriveStatus? Position(int channel, int record, int position) => _interp.PositionRel(channel, record, position);
     }
 
     void RunDriveCommand(BasicFile f, string command)
@@ -271,11 +273,24 @@ public sealed partial class Interpreter
     /// <summary>Text written to channel 15 is collected until a CR, then run as a DOS command.</summary>
     void CommandInput(BasicFile f, string s)
     {
+        if (f.SkipCommandCr && s.StartsWith('\r')) s = s[1..];
+        f.SkipCommandCr = false;
         f.Buffer.Append(s);
         string all = f.Buffer.ToString();
-        int cr;
-        while ((cr = all.IndexOf('\r')) >= 0)
+        while (all.Length > 0)
         {
+            if (all[0] is 'P' or 'p')
+            {
+                // the position command is P, channel, record low, record high, byte: five raw characters, any of which can be a CR
+                if (all.Length < 5) break;
+                RunDriveCommand(f, all[..5]);
+                all = all[5..];
+                if (all.StartsWith('\r')) all = all[1..];
+                else if (all.Length == 0) f.SkipCommandCr = true; // PRINT# sends its CR separately
+                continue;
+            }
+            int cr = all.IndexOf('\r');
+            if (cr < 0) break;
             RunDriveCommand(f, all[..cr]);
             all = all[(cr + 1)..];
         }

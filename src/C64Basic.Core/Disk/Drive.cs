@@ -49,6 +49,9 @@ public readonly record struct DriveStatus(int Code, string Message, int Track = 
         33 => "SYNTAX ERROR",
         34 => "SYNTAX ERROR",
         39 => "FILE NOT FOUND",
+        50 => "RECORD NOT PRESENT",
+        51 => "OVERFLOW IN RECORD",
+        52 => "FILE TOO LARGE",
         60 => "WRITE FILE OPEN",
         61 => "FILE NOT OPEN",
         62 => "FILE NOT FOUND",
@@ -94,6 +97,14 @@ public interface IDiskDrive
 
     /// <summary>Rebuilds the block allocation map from the files that exist.</summary>
     void Validate();
+
+    // ---- relative files (disk images only) ----
+
+    /// <summary>
+    /// Opens a relative file. With a record length a missing file is created; without one a file that is not relative, or does not
+    /// exist, gives null so the caller can treat it as an ordinary file. A drive without relative files refuses with error 64.
+    /// </summary>
+    IRelFile? OpenRel(string name, int recordLength) => recordLength > 0 ? throw new DriveException(64) : null;
 
     // ---- direct access to blocks (disk images only) ----
 
@@ -174,4 +185,23 @@ public interface IBlockChannels
     byte[]? Buffer(int channel);
 
     void SetPointer(int channel, int pointer);
+
+    /// <summary>
+    /// The P command: positions a relative file's channel at a record (1-based) and a byte in it (1-based). Returns the status
+    /// (50 if the record is past the end of the file), or null if the channel is not a relative file.
+    /// </summary>
+    DriveStatus? Position(int channel, int record, int position);
+}
+
+/// <summary>A relative file: fixed-length records, addressed by number.</summary>
+public interface IRelFile
+{
+    int RecordLength { get; }
+    int RecordCount { get; }
+
+    /// <summary>A record (0-based) as <see cref="RecordLength"/> bytes; error 50 if it does not exist.</summary>
+    byte[] Read(int record);
+
+    /// <summary>Stores a record (0-based), growing the file with empty records if it is past the end.</summary>
+    void Write(int record, byte[] data);
 }

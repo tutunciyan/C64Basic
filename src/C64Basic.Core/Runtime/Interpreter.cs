@@ -12,6 +12,9 @@ public sealed class InterpreterOptions
 
     /// <summary>Raise ?OVERFLOW above ~1.7E38 and flush values below ~2.9E-39 to zero, like the 40-bit MBF format.</summary>
     public bool EmulateMbfRange { get; init; } = true;
+
+    /// <summary>Slows execution to about this many statements per second so animations run at C64 speed. 0 = full speed.</summary>
+    public int StatementsPerSecond { get; init; }
 }
 
 sealed class ProgramLine
@@ -234,9 +237,24 @@ public sealed partial class Interpreter
                 continue;
             }
 
+            if (_opts.StatementsPerSecond > 0) Throttle();
+
             if (_trace && _curStmt == 0 && _curLine >= 0) Write($"[{_lines[_curLine].Number}]");
             Exec(stmts[_curStmt++]);
         }
+    }
+
+    long _throttleStart, _throttleCount;
+
+    /// <summary>Every 32 statements, sleeps if the program is running ahead of the configured statement rate.</summary>
+    void Throttle()
+    {
+        if (_throttleCount == 0) _throttleStart = Stopwatch.GetTimestamp();
+        if ((++_throttleCount & 31) != 0) return;
+        double expected = _throttleCount / (double)_opts.StatementsPerSecond;
+        double actual = Stopwatch.GetElapsedTime(_throttleStart).TotalSeconds;
+        if (expected - actual > 0.002) Thread.Sleep((int)((expected - actual) * 1000));
+        if (actual > expected + 0.5) _throttleCount = 0; // we fell behind (e.g. waiting for input): restart the clock
     }
 
     void BreakHere()
@@ -369,6 +387,7 @@ public sealed partial class Interpreter
                     int addr = ToInt(Eval(p.Address), 0, 65535);
                     int val = ToInt(Eval(p.Value), 0, 255);
                     _mem[addr] = (byte)val;
+                    if (addr == 211) Col = Math.Min(val, 79);
                     _dev.Poke(addr, val);
                     break;
                 }

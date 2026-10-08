@@ -290,12 +290,12 @@ public sealed partial class Interpreter
             case "LEN": return Value.Num(S(0).Length);
             case "VAL": return Value.Num(Check(NumberParser.ParsePrefix(S(0))));
             case "STR$": return Value.Str(NumberFormat.Format(N(0)));
-            case "CHR$": return Value.Str(((char)ToInt(Eval(f.Args[0]), 0, 255)).ToString());
+            case "CHR$": return Value.Str(Petscii.ToChar(ToInt(Eval(f.Args[0]), 0, 255)).ToString());
             case "ASC":
                 {
                     string s = S(0);
                     if (s.Length == 0) throw new BasicException(ErrorCode.IllegalQuantity);
-                    return Value.Num(s[0]);
+                    return Value.Num(Petscii.ToCode(s[0]));
                 }
             case "LEFT$":
                 {

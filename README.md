@@ -10,7 +10,7 @@ dotnet run --project src/C64Basic.Console -- --strict          # stock V2 only
 dotnet test
 ```
 
-Options: `--run <file>`, `--strict`, `--plain` (don't switch the terminal to C64 colours), `--help`.
+Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
 ## Layout
@@ -58,13 +58,17 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 - `WAIT 198,n` waits for a key (works with a following `GET`); any other `WAIT` polls `PEEK` memory until RUN/STOP.
 - `SYS` supports 58692 (clear screen), 64738 (reset), and 65490 (CHROUT, character in `POKE 780`). Anything else
   raises `?ILLEGAL QUANTITY`, since there is no 6502.
-- The console front end handles PETSCII home, cursor up/down/left/right, reverse on/off and the 16 colour codes.
+- In a terminal the console front end shows an emulated 40x25 C64 screen with border (true-colour ANSI): PETSCII home,
+  cursor keys, reverse and the 16 colour codes, scrolling, and `POKE` to screen RAM (1024), colour RAM (55296),
+  cursor row/column (214/211), text colour (646), border (53280) and background (53281). Typed letters show as
+  upper case, as on a C64. Execution is paced at roughly 1500 statements/s so animations look right; use `--fast` to
+  disable. PETSCII graphics from `CHR$` are drawn with Unicode box/block characters.
 
 ## Not implemented
 
 Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` raises `?ILLEGAL QUANTITY`.
-Relative and program files, disk commands such as scratch, and `POKE` effects other than 646 (text colour) and
-53281 (background) are missing. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
+Relative and program files, disk commands such as scratch, sprites, sound, and any `POKE`/`PEEK` hardware
+registers not listed above are missing. `PEEK` of screen RAM returns what was `POKE`d, not printed text. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is

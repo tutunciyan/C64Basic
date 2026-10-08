@@ -11,11 +11,12 @@ const string Usage = """
       program.bas     load and run a program, then exit
       --run <file>    same as above
       --strict        stock BASIC V2 only: no extensions, 80-character lines
-      --plain         don't switch the terminal to C64 colours
+      --plain         plain text output: no emulated C64 screen, colours or border
+      --fast          run at full speed instead of C64 speed
       -h, --help      show this help
     """;
 
-bool strict = false, plain = false;
+bool strict = false, plain = false, fast = false;
 string? file = null;
 
 for (int i = 0; i < args.Length; i++)
@@ -24,6 +25,7 @@ for (int i = 0; i < args.Length; i++)
     {
         case "--strict": strict = true; break;
         case "--plain": plain = true; break;
+        case "--fast": fast = true; break;
         case "-h" or "--help": System.Console.WriteLine(Usage); return 0;
         case "--run":
             if (++i >= args.Length) { System.Console.Error.WriteLine("--run needs a file name"); return 2; }
@@ -36,8 +38,8 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
-var device = new ConsoleDevice(classicColors: !plain && file == null);
-var interpreter = new Interpreter(device, new HostFileSystem(), new InterpreterOptions { Strict = strict });
+var device = new ConsoleDevice(emulateScreen: !plain);
+var interpreter = new Interpreter(device, new HostFileSystem(), new InterpreterOptions { Strict = strict, StatementsPerSecond = device.HasScreen && !fast ? 1500 : 0 });
 var repl = new Repl(interpreter, device);
 
 try

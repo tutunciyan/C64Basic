@@ -49,7 +49,8 @@ jobs:
         run: >
           dotnet publish src/C64Basic.Console -c Release -r ${{ matrix.rid }} --self-contained
           -p:PublishSingleFile=true -o out/console
-      - name: Publish the GUI (a folder, not a single file: SDL2 must sit next to the executable)
+      # a folder, not a single file: SDL2 must sit next to the executable
+      - name: Publish the GUI
         run: >
           dotnet publish src/C64Basic.Gui -c Release -r ${{ matrix.rid }} --self-contained -o out/gui
       - name: Smoke-test the Linux GUI build

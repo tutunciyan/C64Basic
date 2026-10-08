@@ -32,9 +32,17 @@ public sealed class TestConsole : IConsoleDevice
 public sealed class MemoryFileSystem : IFileSystem
 {
     public Dictionary<string, string[]> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public bool Exists(string path) => Files.ContainsKey(path);
+
+    /// <summary>Files written as raw bytes (PRG files, disk images).</summary>
+    public Dictionary<string, byte[]> Binary { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool Exists(string path) => Files.ContainsKey(path) || Binary.ContainsKey(path);
     public string[] ReadAllLines(string path) => Files[path];
-    public void WriteAllLines(string path, IEnumerable<string> lines) => Files[path] = lines.ToArray();
+    public void WriteAllLines(string path, IEnumerable<string> lines) { Binary.Remove(path); Files[path] = lines.ToArray(); }
+    public byte[] ReadAllBytes(string path) => Binary.TryGetValue(path, out var b) ? b : System.Text.Encoding.Latin1.GetBytes(string.Concat(Files[path].Select(l => l + "\r")));
+    public void WriteAllBytes(string path, byte[] data) { Files.Remove(path); Binary[path] = data; }
+    public IEnumerable<string> ListFiles() => Files.Keys.Concat(Binary.Keys).ToList();
+    public void Delete(string path) { Files.Remove(path); Binary.Remove(path); }
 }
 
 public static class Basic

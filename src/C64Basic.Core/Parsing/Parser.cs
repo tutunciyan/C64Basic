@@ -309,12 +309,21 @@ public sealed class Parser
         return (from, to);
     }
 
-    Expr? ParseFileArgs()
+    FileArgs ParseFileArgs()
     {
-        Expr? name = null;
+        Expr? name = null, device = null, secondary = null;
         if (!AtStmtEnd && Cur.Kind != TokKind.Comma) name = ParseExpr();
-        while (Cur.Kind == TokKind.Comma) { Take(); ParseExpr(); } // device / secondary address are ignored
-        return name;
+        if (Cur.Kind == TokKind.Comma)
+        {
+            Take();
+            if (!AtStmtEnd && Cur.Kind != TokKind.Comma) device = ParseExpr();
+            if (Cur.Kind == TokKind.Comma)
+            {
+                Take();
+                if (!AtStmtEnd) secondary = ParseExpr();
+            }
+        }
+        return new FileArgs(name, device, secondary);
     }
 
     LetStmt ParseLet()

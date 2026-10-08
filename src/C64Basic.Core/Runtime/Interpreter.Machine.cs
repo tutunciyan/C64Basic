@@ -43,6 +43,8 @@ public sealed partial class Interpreter
             return TrapResult.Return;
         };
         cpu.Traps[0xFFF0] = Plot;
+        cpu.Traps[0xFFD5] = KernalLoad;
+        cpu.Traps[0xFFD8] = KernalSave;
         cpu.Traps[0xFFB7] = c => { c.A = (byte)_st; c.SetNZ(c.A); return TrapResult.Return; };                  // READST
 
         // calls that only matter with real devices attached

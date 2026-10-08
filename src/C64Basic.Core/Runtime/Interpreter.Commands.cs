@@ -36,13 +36,13 @@ public sealed partial class Interpreter
                 ListLines(l.From, l.To);
                 break;
             case LoadStmt l:
-                LoadProgram(FileNameFrom(l.Name));
+                DoLoad(l.Args, verify: false);
                 break;
             case SaveStmt sv:
-                _fs.WriteAllLines(FileNameFrom(sv.Name), Listing());
+                DoSave(sv.Args);
                 break;
             case VerifyStmt v:
-                VerifyProgram(FileNameFrom(v.Name));
+                DoLoad(v.Args, verify: true);
                 break;
 
             // ---- extensions ----
@@ -93,44 +93,6 @@ public sealed partial class Interpreter
             }
             Write(LineListing(l) + "\n");
         }
-    }
-
-    string FileNameFrom(Expr? name)
-    {
-        if (name == null) throw new BasicException(ErrorCode.MissingFileName);
-        var v = Eval(name);
-        if (!v.IsStr) throw new BasicException(ErrorCode.TypeMismatch);
-        string file = v.S!.Trim();
-        if (file.Length == 0) throw new BasicException(ErrorCode.MissingFileName);
-        return Path.HasExtension(file) ? file : file + ".bas";
-    }
-
-    void LoadProgram(string path)
-    {
-        if (!_fs.Exists(path)) throw new BasicException(ErrorCode.FileNotFound);
-        var text = _fs.ReadAllLines(path);
-        _lines.Clear();
-        ClearState();
-        foreach (var raw in text)
-        {
-            string line = raw.TrimStart();
-            if (line.Length == 0 || !char.IsAsciiDigit(line[0])) continue;
-            int j = 0;
-            while (j < line.Length && char.IsAsciiDigit(line[j])) j++;
-            if (!int.TryParse(line.AsSpan(0, j), out int number) || number > MaxLineNumber)
-                throw new BasicException(ErrorCode.Load);
-            StoreLine(number, _lexer.Normalize(line[j..].TrimStart(' ').TrimEnd()));
-        }
-        ProgramChanged();
-        _halted = true; // a LOAD ends whatever was running
-    }
-
-    void VerifyProgram(string path)
-    {
-        if (!_fs.Exists(path)) throw new BasicException(ErrorCode.FileNotFound);
-        var saved = _fs.ReadAllLines(path).Where(l => l.Trim().Length > 0).Select(l => l.Trim()).ToList();
-        var current = Listing().ToList();
-        if (!saved.SequenceEqual(current)) throw new BasicException(ErrorCode.Verify);
     }
 
     void DoRenumber(RenumberStmt r)

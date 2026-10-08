@@ -517,7 +517,7 @@ public class FileTests
     [Fact]
     public void LoadMissingFile()
     {
-        Assert.Equal("?FILE NOT FOUND  ERROR\n", Basic.Run("LOAD \"nope\""));
+        Assert.Equal("SEARCHING FOR nope\n?FILE NOT FOUND  ERROR\n", Basic.Run("LOAD \"nope\""));
     }
 
     [Fact]
@@ -532,10 +532,10 @@ public class FileTests
         fs.Files["p.bas"] = new[] { "10 REM" };
         other.ProcessLine("10 REM");
         other.ProcessLine("VERIFY \"p\"");
-        Assert.Equal("", console.Output);
+        Assert.Equal("SEARCHING FOR p\nVERIFYING\nOK\n", console.Output);
         other.ProcessLine("20 REM");
         other.ProcessLine("VERIFY \"p\"");
-        Assert.Equal("?VERIFY  ERROR\n", console.Output);
+        Assert.Equal("SEARCHING FOR p\nVERIFYING\nOK\nSEARCHING FOR p\nVERIFYING\n?VERIFY  ERROR\n", console.Output);
     }
 }
 

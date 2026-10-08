@@ -51,7 +51,7 @@ public sealed class Repl
     /// <summary>Loads a program from disk, runs it, and returns false if it ended with an error.</summary>
     public bool RunFile(string path)
     {
-        _interp.ProcessLine($"LOAD \"{path}\"");
+        _interp.LoadQuietly(path);
         if (_interp.LastRunFailed) return false;
         try { _interp.ProcessLine("RUN"); }
         catch (InputEndedException) { }

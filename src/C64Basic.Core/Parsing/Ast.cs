@@ -55,9 +55,11 @@ public sealed record ClrStmt : Stmt;
 public sealed record NewStmt : Stmt;
 public sealed record RunStmt(int? Line) : Stmt;
 public sealed record ListStmt(int? From, int? To) : Stmt;
-public sealed record LoadStmt(Expr? Name) : Stmt;
-public sealed record SaveStmt(Expr? Name) : Stmt;
-public sealed record VerifyStmt(Expr? Name) : Stmt;
+/// <summary>LOAD, SAVE and VERIFY take a name, a device number and a secondary address, all optional.</summary>
+public sealed record FileArgs(Expr? Name, Expr? Device, Expr? Secondary);
+public sealed record LoadStmt(FileArgs Args) : Stmt;
+public sealed record SaveStmt(FileArgs Args) : Stmt;
+public sealed record VerifyStmt(FileArgs Args) : Stmt;
 public sealed record ContStmt : Stmt;
 
 /// <summary>Raised when execution reaches a statement that failed to parse (BASIC reports syntax errors at run time).</summary>

@@ -1,13 +1,15 @@
 using System.Text;
+using C64Basic.Core.Disk;
 using C64Basic.Core.Parsing;
 
 namespace C64Basic.Core.Runtime;
 
-enum FileKind { Disk, Keyboard, Screen, Command }
+enum FileKind { Disk, Keyboard, Screen, Command, Printer }
 
 sealed class BasicFile
 {
     public int Number;
+    public int Device;
     public FileKind Kind;
     public string Path = "";
     public bool Writing, Append;
@@ -60,9 +62,17 @@ public sealed partial class Interpreter
         {
             case 0: f.Kind = FileKind.Keyboard; break;
             case 3: f.Kind = FileKind.Screen; f.Writing = true; break;
-            case >= 8 and <= 11:
-                if (sa == 15) { f.Kind = FileKind.Command; f.Text = "00, OK,00,00\r"; break; }
-                OpenDisk(f, name, sa);
+            case 4 or 5: f.Kind = FileKind.Printer; f.Writing = true; break;
+            case 1 or (>= 8 and <= 11):
+                f.Device = dev;
+                if (sa == 15)
+                {
+                    f.Kind = FileKind.Command;
+                    f.Writing = true; // the command channel is both: PRINT# sends commands, INPUT# reads the status
+                    f.Text = StatusOf(dev) + "\r";
+                    if (name.Length > 0) RunDriveCommand(f, name); // OPEN 15,8,15,"S:OLD" runs it at once
+                }
+                else OpenDisk(f, name, sa);
                 break;
             default:
                 throw new BasicException(ErrorCode.DeviceNotPresent);
@@ -92,15 +102,27 @@ public sealed partial class Interpreter
         }
         f.Path = path;
         f.Writing = write ?? false;
-        if (f.Writing)
+        var drive = DriveFor(f.Device);
+        try
         {
-            if (f.Append && _fs.Exists(path)) f.Buffer.Append(_fs.ReadAllText(path));
+            if (f.Writing)
+            {
+                if (f.Append && SafeExists(drive, path)) f.Buffer.Append(drive.ReadText(path));
+            }
+            else f.Text = drive.ReadText(path);
+            SetStatus(f.Device, DriveStatus.Ok);
         }
-        else
+        catch (DriveException e)
         {
-            if (!_fs.Exists(path)) throw new BasicException(ErrorCode.FileNotFound);
-            f.Text = _fs.ReadAllText(path);
+            SetStatus(f.Device, DriveStatus.Of(e.Code, e.Track, e.Sector));
+            if (e.Code == 62 && !f.Writing) throw new BasicException(ErrorCode.FileNotFound);
         }
+    }
+
+    static bool SafeExists(IDiskDrive drive, string path)
+    {
+        try { drive.ReadText(path); return true; }
+        catch (DriveException) { return false; }
     }
 
     void DoClose(Expr e)
@@ -108,7 +130,27 @@ public sealed partial class Interpreter
         int n = ToInt(Eval(e), 0, 255);
         if (!_files.Remove(n, out var f)) return; // closing a closed file is not an error
         if (_cmdFile == f) _cmdFile = null;
-        if (f.Writing && f.Kind == FileKind.Disk) _fs.WriteAllText(f.Path, f.Buffer.ToString());
+        switch (f.Kind)
+        {
+            case FileKind.Disk when f.Writing:
+                try
+                {
+                    DriveFor(f.Device).WriteText(f.Path, f.Buffer.ToString(), replace: true);
+                    SetStatus(f.Device, DriveStatus.Ok);
+                }
+                catch (DriveException ex) { SetStatus(f.Device, DriveStatus.Of(ex.Code, ex.Track, ex.Sector)); }
+                break;
+            case FileKind.Command when f.Buffer.Length > 0:
+                RunDriveCommand(f, f.Buffer.ToString());
+                break;
+            case FileKind.Printer:
+                {
+                    const string PrinterFile = "PRINTER.TXT";
+                    string old = _fs.Exists(PrinterFile) ? _fs.ReadAllText(PrinterFile) : "";
+                    _fs.WriteAllText(PrinterFile, old + f.Buffer);
+                    break;
+                }
+        }
     }
 
     void DoCmd(CmdStmt c)
@@ -128,6 +170,7 @@ public sealed partial class Interpreter
     void FileOut(BasicFile f, string s)
     {
         if (f.Kind == FileKind.Screen) { Write(s.Replace('\r', '\n')); return; }
+        if (f.Kind == FileKind.Command) { CommandInput(f, s); return; }
         f.Put(s);
     }
 
@@ -143,6 +186,13 @@ public sealed partial class Interpreter
             f.Text = line + "\r";
             f.Pos = 0;
         }
+        if (f.Kind == FileKind.Command && f.Pos >= f.Text.Length)
+        {
+            // the status was read: the channel goes back to reporting "00, OK"
+            SetStatus(f.Device, DriveStatus.Ok);
+            f.Text = DriveStatus.Ok + "\r";
+            f.Pos = 0;
+        }
         if (f.Pos >= f.Text.Length) { _st = 64; return -1; }
         char c = f.Text[f.Pos++];
         if (f.Kind != FileKind.Keyboard && f.Pos >= f.Text.Length) _st = 64;
@@ -151,7 +201,7 @@ public sealed partial class Interpreter
 
     static void RequireInput(BasicFile f)
     {
-        if (f.Writing) throw new BasicException(ErrorCode.NotInputFile);
+        if (f.Writing && f.Kind != FileKind.Command) throw new BasicException(ErrorCode.NotInputFile);
     }
 
     static bool IsStrTarget(Expr t) => t is VarRef { Type: VarType.Str } or ArrayRef { Type: VarType.Str };

@@ -10,7 +10,7 @@ dotnet run --project src/C64Basic.Console -- --strict          # stock V2 only
 dotnet test
 ```
 
-Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--help`.
+Options: `--run <file>`, `--strict`, `--plain` (plain text stream: no emulated screen), `--fast` (don't slow execution to C64 speed), `--width <n>` (emulated screen columns, centred with a border; 0 = terminal width; default 40, like a real C64), `--disk [n=]<file.d64>` (mount a disk image as device n, default 8; created blank if missing), `--tape <file.t64>`, `--help`.
 Press Ctrl+C to act as RUN/STOP.
 
 ## Layout
@@ -53,8 +53,21 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 ## Files, WAIT, SYS and console codes
 
 - `OPEN lf,dev,sa,"name[,S,W|R|A]"`, `CLOSE`, `PRINT#`, `INPUT#`, `GET#`, `CMD` and `ST` work on devices 0 (keyboard),
-  3 (screen) and 8-11 (disk). Disk files are plain text with CR-separated records, kept in memory until `CLOSE`.
-  `OPEN 15,8,15` gives a command channel that always reads back `00, OK,00,00`. Input items end at a comma, colon or CR.
+  3 (screen), 4/5 (printer), 1 (tape) and 8-11 (disk). Input items end at a comma, colon or CR. Without a mounted image, tape
+  and disk are the host's working directory: sequential files are plain text with CR-separated records, kept in memory until
+  `CLOSE`. The printer appends to `PRINTER.TXT`.
+- **Disk drives** (`Core/Disk`): `--disk` mounts a real 35-track `.d64` image (block allocation map, directory chain, sector
+  chains with interleave; every change is written back to the file). `OPEN` on it creates PETSCII `SEQ` files.
+  `LOAD "$",8` loads the directory as a BASIC program (`LOAD "$0:A*",8` filters it), `LOAD "N",8,1` loads machine code at the
+  file's own address, `SAVE "@0:N",8` replaces a file (without `@` an existing name is DOS error 63), and wildcards
+  work (`LOAD "GA*",8`). Programs on disk are tokenized PRG files (`PrgFormat`); on the host directory `SAVE "x"` still writes
+  readable `x.bas` source and `SAVE "x.prg"` writes tokenized bytes. LOAD/SAVE/VERIFY print the `SEARCHING FOR`/`LOADING`/
+  `SAVING`/`OK` messages in direct mode, and `PRESS PLAY ON TAPE` etc. for device 1.
+- **Command channel** (`OPEN 15,8,15`): `PRINT#15,"S:name"` (scratch, wildcards), `R:new=old`, `N:name,id` (format), `V` (validate),
+  `I`, `C:new=a,b` (copy/concatenate). `INPUT#15,E,E$,T,S` reads `00, OK,00,00` style status (`62, FILE NOT FOUND`, `63, FILE EXISTS`,
+  `72, DISK FULL`, ...). A failed OPEN or LOAD of a missing file still raises `?FILE NOT FOUND`; other DOS errors only show in the status.
+- **Tape**: `--tape` mounts a `.t64` archive as device 1 (`LOAD "",1` loads the next program).
+- The KERNAL `LOAD` ($FFD5) and `SAVE` ($FFD8) calls work from machine code through `SETLFS`/`SETNAM`.
 - `WAIT 198,n` waits for a key (works with a following `GET`); any other `WAIT` polls `PEEK` memory until RUN/STOP.
 - `SYS addr` runs machine code on a 6502 core (all documented opcodes with cycle counts, decimal mode, RMW dummy writes;
   it passes Klaus Dormann's functional test). A, X, Y and P are loaded from and stored to 780-783, as BASIC does, and
@@ -65,7 +78,7 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   SCNKEY/CLRCHN/CLALL (no-ops), clear screen $E544, home $E566, reset $FCE2, BASIC warm start $A474/$A483/$E37B (ends
   the SYS), and the IRQ tail $EA31/$EA7E/$EA81. Interrupts are delivered while machine code runs: the CIA 1 timer and VIC-II
   raster IRQs go through the RAM vector at 788/789 (or $FFFE/$FFFF once the KERNAL is banked out with `POKE 1`), so
-  raster-interrupt programs work. NMI, LOAD/SAVE/OPEN KERNAL calls and the BASIC ROM's floating-point routines are not
+  raster-interrupt programs work. NMI, the KERNAL OPEN/CLOSE/CHKIN calls and the BASIC ROM's floating-point routines are not
   emulated. Execution is paced to 985 kHz unless `--fast`; Ctrl+C stops a runaway routine.
 - In a terminal the console front end shows an emulated 40x25 C64 screen with border (true-colour ANSI): PETSCII home,
   cursor keys, reverse and the 16 colour codes, scrolling, and `POKE` to screen RAM (1024), colour RAM (55296),
@@ -97,9 +110,11 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 
 ## Not implemented
 
-Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` without a vector raises `?ILLEGAL QUANTITY`.
-Relative and program files, disk commands such as scratch, and any `POKE`/`PEEK` hardware
-registers not listed above are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
+`USR` without a vector raises `?ILLEGAL QUANTITY`. Relative (`REL`) files, direct-access block commands (`U1`, `B-R`, ...),
+`.tap` pulse images and DOS errors beyond those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed
+above. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
+`LOAD` without a device number reads from device 8 (a real C64 defaults to tape). A directory loaded with `LOAD "$"` keeps its
+lines in file order, so several files with the same block count each show up, but it should not be edited or run.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is

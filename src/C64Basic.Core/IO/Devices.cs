@@ -49,6 +49,16 @@ public interface IFileSystem
     /// <summary>Whole-file read for OPEN/INPUT#. Records are separated by CR (CHR$(13)), as on a C64 disk.</summary>
     string ReadAllText(string path) => string.Concat(ReadAllLines(path).Select(l => l + "\r"));
 
+    /// <summary>Raw bytes, for PRG files and disk or tape images.</summary>
+    byte[] ReadAllBytes(string path) => System.Text.Encoding.Latin1.GetBytes(ReadAllText(path));
+
+    void WriteAllBytes(string path, byte[] data) => WriteAllText(path, System.Text.Encoding.Latin1.GetString(data));
+
+    /// <summary>Names of the files in the working directory, for directory listings and wildcards.</summary>
+    IEnumerable<string> ListFiles() => Array.Empty<string>();
+
+    void Delete(string path) => throw new NotSupportedException();
+
     /// <summary>Whole-file write for CLOSE on a file opened for output.</summary>
     void WriteAllText(string path, string text)
     {
@@ -63,6 +73,11 @@ public sealed class HostFileSystem : IFileSystem
     public bool Exists(string path) => File.Exists(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> lines) => File.WriteAllLines(path, lines);
+
+    public byte[] ReadAllBytes(string path) => File.ReadAllBytes(path);
+    public void WriteAllBytes(string path, byte[] data) => File.WriteAllBytes(path, data);
+    public IEnumerable<string> ListFiles() => Directory.GetFiles(".").Select(Path.GetFileName).Where(n => n != null)!;
+    public void Delete(string path) => File.Delete(path);
 
     public string ReadAllText(string path) =>
         File.ReadAllText(path).Replace("\r\n", "\r").Replace('\n', '\r');

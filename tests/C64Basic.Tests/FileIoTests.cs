@@ -46,7 +46,7 @@ public class FileIoTests
     [InlineData("PRINT#5,1", "?FILE NOT OPEN  ERROR\n")]
     [InlineData("OPEN 1,8,1,\"X\":OPEN 1,8,1,\"Y\"", "?FILE OPEN  ERROR\n")]
     [InlineData("OPEN 1,8,1,\"X\":INPUT#1,A", "?NOT INPUT FILE  ERROR\n")]
-    [InlineData("OPEN 1,4", "?DEVICE NOT PRESENT  ERROR\n")]
+    [InlineData("OPEN 1,2", "?DEVICE NOT PRESENT  ERROR\n")]
     [InlineData("OPEN 1,8,1", "?MISSING FILE NAME  ERROR\n")]
     public void Errors(string line, string expected) => Assert.Equal(expected, Basic.Run(line));
 

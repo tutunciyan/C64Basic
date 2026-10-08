@@ -138,4 +138,11 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
     }
 
     public byte Joystick(int port) => _joystick[port];
+
+    volatile bool _restore;
+
+    public bool Restore => _restore;
+
+    /// <summary>Presses or releases the RESTORE key.</summary>
+    public void SetRestore(bool down) => _restore = down;
 }

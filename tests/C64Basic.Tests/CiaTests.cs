@@ -10,6 +10,7 @@ public sealed class TestInput : IInputDevice
 
     public byte KeyColumn(int column) => _columns[column];
     public byte Joystick(int port) => _joy[port];
+    public bool Restore { get; set; }
 
     /// <summary>Holds key number <c>column * 8 + row</c>.</summary>
     public TestInput Press(int key) { _columns[key / 8] |= (byte)(1 << key % 8); return this; }

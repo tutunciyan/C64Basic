@@ -52,6 +52,8 @@ public sealed class Cpu6502
     /// <summary>Called when the default KERNAL interrupt handler runs (the 60 Hz system IRQ).</summary>
     public Action? SystemIrq { get; set; }
 
+    bool _nmiActive;
+
     public Cpu6502(Bus bus) => _bus = bus;
 
     // ---------- helpers ----------
@@ -92,6 +94,9 @@ public sealed class Cpu6502
                 if (Cycles >= nextIrq)
                 {
                     nextIrq = Cycles + IrqPollInterval;
+                    bool nmi = _bus.NmiLine;
+                    if (nmi && !_nmiActive) Nmi(); // the NMI is edge-triggered and cannot be masked
+                    _nmiActive = nmi;
                     if (!GetFlag(FlagI) && _bus.IrqLine) Irq();
                 }
                 Step();
@@ -144,6 +149,35 @@ public sealed class Cpu6502
         {
             int vector = Word(0xFFFE);
             if (vector == 0) { _bus.Read(0xDC0D); return; } // no handler installed: ignore rather than run at 0
+            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
+            SetFlag(FlagI, true);
+            PC = vector;
+        }
+        Cycles += 7;
+    }
+
+    void Nmi()
+    {
+        if (KernalVisible)
+        {
+            int vector = Word(0x318);
+            if (vector == 0xFE47)
+            {
+                // the stock handler: RESTORE alone does nothing; with RUN/STOP held it is the warm start
+                _bus.Read(0xDD0D);
+                var input = _bus.Input;
+                if (input != null && input.Restore && (input.KeyColumn(7) & 0x80) != 0) StopReason = CpuStop.Terminated;
+                Cycles += 40;
+                return;
+            }
+            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
+            SetFlag(FlagI, true);
+            PC = vector;
+        }
+        else
+        {
+            int vector = Word(0xFFFA);
+            if (vector == 0) { _bus.Read(0xDD0D); return; } // no handler installed
             Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
             SetFlag(FlagI, true);
             PC = vector;
@@ -310,6 +344,8 @@ public sealed class Cpu6502
     void Execute(int op)
     {
         if ((op & 0x1F) == 0x10) { Branch(op); return; }
+        if (Nops.TryGetValue(op, out int nop)) { SkipOperand(nop); return; }
+        if ((op & 3) == 3) { Undocumented(op); return; }
 
         switch (op)
         {
@@ -359,6 +395,74 @@ public sealed class Cpu6502
             case 1: Group1(aaa, bbb); break;
             case 2: Group2(aaa, bbb); break;
             default: Group0(aaa, bbb); break;
+        }
+    }
+
+    void SkipOperand(int kind)
+    {
+        switch (kind)
+        {
+            case 1: case 2: Fetch(); break;
+            case 3: ZeroPageX(); break;
+            case 4: Absolute(); break;
+            case 5: AbsoluteIndexed(X, true); break;
+        }
+    }
+
+    void Undocumented(int op)
+    {
+        int aaa = op >> 5, bbb = op >> 2 & 7;
+        if (bbb == 2)
+        {
+            int m = Fetch();
+            switch (aaa)
+            {
+                case 0: case 1: A &= (byte)m; SetNZ(A); SetFlag(FlagC, (A & 0x80) != 0); break;        // ANC
+                case 2: A &= (byte)m; A = (byte)Lsr(A); break;                                          // ALR
+                case 3:                                                                                 // ARR
+                    A &= (byte)m;
+                    A = (byte)(A >> 1 | (P & FlagC) << 7);
+                    SetNZ(A);
+                    SetFlag(FlagC, (A & 0x40) != 0);
+                    SetFlag(FlagV, ((A >> 6 ^ A >> 5) & 1) != 0);
+                    break;
+                case 6:                                                                                 // AXS
+                    {
+                        int r = (A & X) - m;
+                        SetFlag(FlagC, r >= 0);
+                        X = (byte)r;
+                        SetNZ(X);
+                        break;
+                    }
+                default: Sbc(m); break;                                                                 // $EB: SBC
+            }
+            return;
+        }
+
+        int address = bbb switch
+        {
+            0 => IndirectX(),
+            1 => ZeroPage(),
+            3 => Absolute(),
+            4 => IndirectY(aaa == 5),
+            5 => aaa is 4 or 5 ? ZeroPageY() : ZeroPageX(),
+            6 => AbsoluteIndexed(Y, false),
+            _ => aaa == 5 ? AbsoluteIndexed(Y, true) : AbsoluteIndexed(X, false),
+        };
+        if (aaa == 4) { Wr(address, A & X); return; }                                                   // SAX
+        if (aaa == 5) { A = X = (byte)Rd(address); SetNZ(A); return; }                                  // LAX
+
+        int old = Rd(address);
+        Wr(address, old); // read-modify-write: the old value goes back first
+        int v;
+        switch (aaa)
+        {
+            case 0: v = Asl(old); Wr(address, v); A |= (byte)v; SetNZ(A); break;                        // SLO
+            case 1: v = Rol(old); Wr(address, v); A &= (byte)v; SetNZ(A); break;                        // RLA
+            case 2: v = Lsr(old); Wr(address, v); A ^= (byte)v; SetNZ(A); break;                        // SRE
+            case 3: v = Ror(old); Wr(address, v); Adc(v); break;                                        // RRA
+            case 6: v = (old - 1) & 0xFF; Wr(address, v); Compare(A, v); break;                         // DCP
+            default: v = (old + 1) & 0xFF; Wr(address, v); Sbc(v); break;                               // ISC
         }
     }
 
@@ -447,8 +551,19 @@ public sealed class Cpu6502
         }
     }
 
+    // NOP variants that skip an operand: implied, immediate, zero page, zero page X, absolute, absolute X
+    static readonly Dictionary<int, int> Nops = new()
+    {
+        [0x1A] = 0, [0x3A] = 0, [0x5A] = 0, [0x7A] = 0, [0xDA] = 0, [0xFA] = 0,
+        [0x80] = 1, [0x82] = 1, [0x89] = 1, [0xC2] = 1, [0xE2] = 1,
+        [0x04] = 2, [0x44] = 2, [0x64] = 2,
+        [0x14] = 3, [0x34] = 3, [0x54] = 3, [0x74] = 3, [0xD4] = 3, [0xF4] = 3,
+        [0x0C] = 4,
+        [0x1C] = 5, [0x3C] = 5, [0x5C] = 5, [0x7C] = 5, [0xDC] = 5, [0xFC] = 5,
+    };
+
     /// <summary>Base cycle count per opcode; 0 marks an undocumented opcode.</summary>
-    static readonly byte[] BaseCycles =
+    static readonly byte[] BaseCycles = AddUndocumented(new byte[]
     {
         7,6,0,0,0,3,5,0,3,2,2,0,0,4,6,0,  2,5,0,0,0,4,6,0,2,4,0,0,0,4,7,0,
         6,6,0,0,3,3,5,0,4,2,2,0,4,4,6,0,  2,5,0,0,0,4,6,0,2,4,0,0,0,4,7,0,
@@ -458,5 +573,38 @@ public sealed class Cpu6502
         2,6,2,0,3,3,3,0,2,2,2,0,4,4,4,0,  2,5,0,0,4,4,4,0,2,4,2,0,4,4,4,0,
         2,6,0,0,3,3,5,0,2,2,2,0,4,4,6,0,  2,5,0,0,0,4,6,0,2,4,0,0,0,4,7,0,
         2,6,0,0,3,3,5,0,2,2,2,0,4,4,6,0,  2,5,0,0,0,4,6,0,2,4,0,0,0,4,7,0,
-    };
+    });
+
+    /// <summary>
+    /// Adds the stable undocumented opcodes: the NOP variants, and the "aaabbb11" group that combines a read-modify-write with
+    /// an ALU operation (SLO, RLA, SRE, RRA, DCP, ISC) or loads and stores two registers (LAX, SAX), plus ANC, ALR, ARR, AXS
+    /// and the SBC alias at $EB. The unstable ones (XAA, AHX, TAS, SHX, SHY, LAS, LAX #) are left out, and so are the JAMs.
+    /// </summary>
+    static byte[] AddUndocumented(byte[] cycles)
+    {
+        foreach (var (op, kind) in Nops) cycles[op] = (byte)(kind switch { 0 or 1 => 2, 2 => 3, _ => 4 });
+
+        for (int aaa = 0; aaa < 8; aaa++)
+        {
+            bool rmw = aaa is 0 or 1 or 2 or 3 or 6 or 7;
+            for (int bbb = 0; bbb < 8; bbb++)
+            {
+                int op = aaa << 5 | bbb << 2 | 3;
+                int c = (rmw, bbb) switch
+                {
+                    (true, 0) => 8, (false, 0) => 6,
+                    (true, 1) => 5, (false, 1) => 3,
+                    (true, 3) => 6, (false, 3) => 4,
+                    (true, 4) => 8, (false, 4) => aaa == 5 ? 5 : 0,
+                    (true, 5) => 6, (false, 5) => 4,
+                    (true, 6) => 7, (false, 6) => 0,
+                    (true, 7) => 7, (false, 7) => aaa == 5 ? 4 : 0,
+                    _ => 0,
+                };
+                if (bbb == 2) c = aaa is 0 or 1 or 2 or 3 or 6 or 7 ? 2 : 0;
+                cycles[op] = (byte)c;
+            }
+        }
+        return cycles;
+    }
 }

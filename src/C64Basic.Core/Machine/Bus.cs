@@ -44,6 +44,9 @@ public sealed class Bus
     /// <summary>The CPU's IRQ line: CIA 1 (system timer) or the VIC-II.</summary>
     public bool IrqLine => Cia1.InterruptPending || Vic.InterruptPending;
 
+    /// <summary>The CPU's NMI line: CIA 2, or the RESTORE key. The CPU reacts to the line going active.</summary>
+    public bool NmiLine => Cia2.InterruptPending || (Input?.Restore ?? false);
+
     readonly Stopwatch _clock = Stopwatch.StartNew();
 
     /// <summary>Seconds since power-on. Raster, CIA timers, time of day and TI all run from it; tests replace it.</summary>

@@ -8,7 +8,7 @@ namespace C64Basic.Core.Runtime;
 public sealed partial class Interpreter
 {
     // BASIC's floating-point accumulator: exponent at $61, mantissa $62-$65 (leading 1 explicit), sign $66
-    const int Fac1 = 0x61, FacSign = 0x66;
+    const int Fac1 = 0x61;
     const int UsrVector = 785;
 
     Cpu6502? _cpu;
@@ -30,6 +30,13 @@ public sealed partial class Interpreter
         cpu.Traps[0xFFCF] = Chrin;
         cpu.Traps[0xFFE4] = c =>                                                                                  // GETIN
         {
+            if (_kernalInput != null)
+            {
+                int ch = ReadKernalInput();
+                c.A = ch < 0 ? (byte)0 : (byte)Petscii.ToCode((char)ch);
+                c.SetFlag(Cpu6502.FlagC, false);
+                return TrapResult.Return;
+            }
             string key = TakeKey();
             c.A = key.Length > 0 ? (byte)Petscii.ToCode(key[0]) : (byte)0;
             c.SetNZ(c.A);
@@ -48,8 +55,13 @@ public sealed partial class Interpreter
         cpu.Traps[0xFFB7] = c => { c.A = (byte)_st; c.SetNZ(c.A); return TrapResult.Return; };                  // READST
 
         // calls that only matter with real devices attached
-        foreach (int nop in new[] { 0xFF9F, 0xFFCC, 0xFFE7 })                                                      // SCNKEY, CLRCHN, CLALL
-            cpu.Traps[nop] = c => TrapResult.Return;
+        cpu.Traps[0xFF9F] = c => TrapResult.Return;                                                               // SCNKEY
+        cpu.Traps[0xFFC0] = KernalOpen;
+        cpu.Traps[0xFFC3] = KernalClose;
+        cpu.Traps[0xFFC6] = KernalChkin;
+        cpu.Traps[0xFFC9] = KernalChkout;
+        cpu.Traps[0xFFCC] = KernalClrchn;
+        cpu.Traps[0xFFE7] = KernalClall;
         cpu.Traps[0xFFBA] = c => { _bus.Ram[0xB8] = c.A; _bus.Ram[0xBA] = c.X; _bus.Ram[0xB9] = c.Y; return TrapResult.Return; };  // SETLFS
         cpu.Traps[0xFFBD] = c => { _bus.Ram[0xB7] = c.A; _bus.Ram[0xBB] = c.X; _bus.Ram[0xBC] = c.Y; return TrapResult.Return; };  // SETNAM
 
@@ -57,17 +69,26 @@ public sealed partial class Interpreter
         cpu.Traps[0xEA31] = c => { c.AcknowledgeSystemIrq(); c.LeaveInterrupt(); return TrapResult.Continue; };
         cpu.Traps[0xEA7E] = cpu.Traps[0xEA31];
         cpu.Traps[0xEA81] = c => { c.LeaveInterrupt(); return TrapResult.Continue; };
+        cpu.Traps[0xFEBC] = cpu.Traps[0xEA81];                                                                    // end of the NMI handler
 
         // leaving machine code for BASIC
         foreach (int ready in new[] { 0xA474, 0xA483, 0xE37B, 0xE394 })
             cpu.Traps[ready] = c => TrapResult.Stop;
         cpu.Traps[0xFCE2] = c => { Reset(); return TrapResult.Stop; };                                            // reset
+        RegisterBasicRoutines(cpu);
         cpu.Traps[0xB248] = c => throw new BasicException(ErrorCode.IllegalQuantity);                             // USR default
         return cpu;
     }
 
     TrapResult Chrin(Cpu6502 c)
     {
+        if (_kernalInput != null)
+        {
+            int ch = ReadKernalInput();
+            c.A = ch < 0 ? (byte)13 : (byte)Petscii.ToCode((char)ch);
+            c.SetFlag(Cpu6502.FlagC, false);
+            return TrapResult.Return;
+        }
         if (_chrinPos >= _chrinLine.Length)
         {
             string? line = _dev.ReadLine();
@@ -159,38 +180,7 @@ public sealed partial class Interpreter
     }
 
     // ---------- floating-point accumulator ----------
-    void WriteFac1(double value)
-    {
-        var ram = _bus.Ram;
-        Array.Clear(ram, Fac1, 6);
-        if (value == 0 || double.IsNaN(value)) return;
+    void WriteFac1(double value) => WriteFac(Fac1, value);
 
-        double m = Math.Abs(value);
-        int exponent = (int)Math.Floor(Math.Log2(m)) + 1;
-        double fraction = m / Math.Pow(2, exponent);          // in [0.5, 1)
-        if (fraction >= 1) { fraction /= 2; exponent++; }
-        if (fraction < 0.5) { fraction *= 2; exponent--; }
-        long mantissa = (long)Math.Round(fraction * 4294967296.0);
-        if (mantissa > 0xFFFFFFFFL) { mantissa = 0x80000000L; exponent++; }
-
-        int biased = exponent + 128;
-        if (biased > 255) throw new BasicException(ErrorCode.Overflow);
-        if (biased < 1) return;                                // underflows to zero
-        ram[Fac1] = (byte)biased;
-        ram[Fac1 + 1] = (byte)(mantissa >> 24);
-        ram[Fac1 + 2] = (byte)(mantissa >> 16);
-        ram[Fac1 + 3] = (byte)(mantissa >> 8);
-        ram[Fac1 + 4] = (byte)mantissa;
-        ram[FacSign] = value < 0 ? (byte)0xFF : (byte)0;
-    }
-
-    double ReadFac1()
-    {
-        var ram = _bus.Ram;
-        int exponent = ram[Fac1];
-        if (exponent == 0) return 0;
-        double mantissa = ((long)ram[Fac1 + 1] << 24 | (long)ram[Fac1 + 2] << 16 | (long)ram[Fac1 + 3] << 8 | ram[Fac1 + 4]) / 4294967296.0;
-        double value = mantissa * Math.Pow(2, exponent - 128);
-        return (ram[FacSign] & 0x80) != 0 ? -value : value;
-    }
+    double ReadFac1() => ReadFac(Fac1);
 }

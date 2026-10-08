@@ -76,7 +76,8 @@ public sealed partial class Interpreter
     (string Name, int Device, int Secondary) ResolveFileArgs(FileArgs a, bool nameRequired)
     {
         string name = NameOf(a.Name);
-        int device = a.Device != null ? ToInt(Eval(a.Device), 0, 255) : 8;
+        // a real C64 defaults to the tape (device 1); outside strict mode the disk is more useful
+        int device = a.Device != null ? ToInt(Eval(a.Device), 0, 255) : _opts.Strict ? 1 : 8;
         int secondary = a.Secondary != null ? ToInt(Eval(a.Secondary), 0, 255) : 0;
         if (name.Length == 0 && nameRequired && device != 1) throw new BasicException(ErrorCode.MissingFileName);
         return (name, device, secondary);

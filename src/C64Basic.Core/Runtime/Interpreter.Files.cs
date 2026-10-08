@@ -54,6 +54,12 @@ public sealed partial class Interpreter
             if (!v.IsStr) throw new BasicException(ErrorCode.TypeMismatch);
             name = v.S!;
         }
+        OpenFile(lf, dev, sa, name);
+    }
+
+    /// <summary>OPEN for BASIC and for the KERNAL's OPEN call.</summary>
+    void OpenFile(int lf, int dev, int sa, string name)
+    {
         if (_files.ContainsKey(lf)) throw new BasicException(ErrorCode.FileOpen);
         if (_files.Count >= MaxOpenFiles) throw new BasicException(ErrorCode.TooManyFiles);
 
@@ -125,11 +131,13 @@ public sealed partial class Interpreter
         catch (DriveException) { return false; }
     }
 
-    void DoClose(Expr e)
+    void DoClose(Expr e) => CloseFile(ToInt(Eval(e), 0, 255));
+
+    void CloseFile(int n)
     {
-        int n = ToInt(Eval(e), 0, 255);
         if (!_files.Remove(n, out var f)) return; // closing a closed file is not an error
         if (_cmdFile == f) _cmdFile = null;
+        if (_kernalInput == f) _kernalInput = null;
         switch (f.Kind)
         {
             case FileKind.Disk when f.Writing:
@@ -174,7 +182,7 @@ public sealed partial class Interpreter
         f.Put(s);
     }
 
-    void RedirectedWrite(string s) => _cmdFile!.Put(s.Replace('\n', '\r'));
+    void RedirectedWrite(string s) => FileOut(_cmdFile!, s.Replace('\n', '\r'));
 
     // ---------- reading ----------
     int ReadChar(BasicFile f, bool refill)

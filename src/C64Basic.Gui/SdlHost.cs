@@ -167,6 +167,9 @@ static unsafe class SdlHost
             case Scancode.ScancodeF12 when !repeat:
                 Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp");
                 return true;
+            case Scancode.ScancodePagedown:
+                console.SetRestore(true);
+                return true;
             case Scancode.ScancodeEscape:
                 console.BreakRequested = true;
                 console.SetKey(63, true);
@@ -198,6 +201,7 @@ static unsafe class SdlHost
     {
         var code = key.Keysym.Scancode;
         if (code == Scancode.ScancodeEscape) console.SetKey(63, false);
+        if (code == Scancode.ScancodePagedown) console.SetRestore(false);
 
         byte bit = KeyMap.JoystickBit(code);
         if (bit != 0)

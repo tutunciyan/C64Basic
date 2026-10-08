@@ -12,6 +12,9 @@ public interface IInputDevice
 
     /// <summary>Joystick state for port 1 or 2: bit 0 up, 1 down, 2 left, 3 right, 4 fire; a set bit means pressed.</summary>
     byte Joystick(int port);
+
+    /// <summary>True while the RESTORE key is held: it pulls the NMI line, and with RUN/STOP it is the warm start.</summary>
+    bool Restore => false;
 }
 
 /// <summary>

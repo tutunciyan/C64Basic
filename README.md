@@ -79,17 +79,26 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 - **Tape**: `--tape` mounts a `.t64` archive as device 1 (`LOAD "",1` loads the next program).
 - The KERNAL `LOAD` ($FFD5) and `SAVE` ($FFD8) calls work from machine code through `SETLFS`/`SETNAM`.
 - `WAIT 198,n` waits for a key (works with a following `GET`); any other `WAIT` polls `PEEK` memory until RUN/STOP.
-- `SYS addr` runs machine code on a 6502 core (all documented opcodes with cycle counts, decimal mode, RMW dummy writes;
-  it passes Klaus Dormann's functional test). A, X, Y and P are loaded from and stored to 780-783, as BASIC does, and
-  the program ends at the first `BRK` (the default KERNAL vector returns to READY). `USR(x)` jumps through the vector at
-  785 with `x` in the floating-point accumulator ($61-$66) and takes the result from it. Undocumented opcodes, and
-  jumps into KERNAL/BASIC ROM addresses without an emulation, raise `?ILLEGAL QUANTITY`.
-- Emulated ROM entry points: CHROUT $FFD2, CHRIN $FFCF, GETIN $FFE4, STOP $FFE1, PLOT $FFF0, READST $FFB7, SETLFS, SETNAM,
-  SCNKEY/CLRCHN/CLALL (no-ops), clear screen $E544, home $E566, reset $FCE2, BASIC warm start $A474/$A483/$E37B (ends
-  the SYS), and the IRQ tail $EA31/$EA7E/$EA81. Interrupts are delivered while machine code runs: the CIA 1 timer and VIC-II
-  raster IRQs go through the RAM vector at 788/789 (or $FFFE/$FFFF once the KERNAL is banked out with `POKE 1`), so
-  raster-interrupt programs work. NMI, the KERNAL OPEN/CLOSE/CHKIN calls and the BASIC ROM's floating-point routines are not
-  emulated. Execution is paced to 985 kHz unless `--fast`; Ctrl+C stops a runaway routine.
+- `SYS addr` runs machine code on a 6502 core (all documented opcodes plus the stable undocumented ones, with cycle counts,
+  decimal mode and RMW dummy writes; it passes Klaus Dormann's functional test). A, X, Y and P are loaded from and stored to
+  780-783, as BASIC does, and the program ends at the first `BRK` (the default KERNAL vector returns to READY). `USR(x)` jumps
+  through the vector at 785 with `x` in the floating-point accumulator ($61-$66) and takes the result from it. Jumps into
+  KERNAL/BASIC ROM addresses without an emulation, and the unstable undocumented opcodes (XAA, AHX, TAS, SHX, SHY, LAS, LAX #)
+  and JAMs, raise `?ILLEGAL QUANTITY`. Decimal-mode ARR is computed as in binary mode.
+- Undocumented opcodes: LAX, SAX, DCP, ISC, SLO, RLA, SRE, RRA, ANC, ALR, ARR, AXS, the SBC alias $EB and every NOP variant.
+- Emulated KERNAL entry points: CHROUT $FFD2, CHRIN $FFCF, GETIN $FFE4, STOP $FFE1, PLOT $FFF0, READST $FFB7, SETLFS, SETNAM,
+  LOAD, SAVE, OPEN $FFC0, CLOSE $FFC3, CHKIN $FFC6, CHKOUT $FFC9, CLRCHN $FFCC, CLALL $FFE7 (files and the DOS command channel
+  work from machine code on the same channels as BASIC's `OPEN`/`PRINT#`; errors come back in A with the carry set), SCNKEY (a
+  no-op), clear screen $E544, home $E566, reset $FCE2, BASIC warm start $A474/$A483/$E37B (ends the SYS), and the interrupt
+  tails $EA31/$EA7E/$EA81/$FEBC.
+- Emulated BASIC ROM routines: MOVFM, MOVMF, MOVFA, MOVAF, FADD/FSUB/FMULT/FDIV/FPWR (number at A/Y) and their FADDT.. forms
+  (FAC1 and ARG), SGN, ABS, NEGOP, INT, SQR, LOG, EXP, SIN, COS, TAN, ATN, RND, FCOMP, GIVAYF, FACINX, GETADR, QINT, FOUT, FIN,
+  LINPRT and STROUT. They use the real memory layout (packed floats, FAC1 at $61, ARG at $69) with the C64's 40-bit precision,
+  and errors surface as BASIC errors (`?OVERFLOW`, `?DIVISION BY ZERO`, `?ILLEGAL QUANTITY`).
+- Interrupts are delivered while machine code runs. The CIA 1 timer and VIC-II raster IRQs go through the RAM vector at 788/789
+  (or $FFFE/$FFFF once the KERNAL is banked out with `POKE 1`), so raster-interrupt programs work. The NMI (CIA 2 or the
+  RESTORE key, PageDown in the GUI) goes through 792/793 (or $FFFA/$FFFB). The stock handler ignores it, except that
+  RUN/STOP+RESTORE ends the SYS like a warm start. Execution is paced to 985 kHz unless `--fast`; Ctrl+C stops a runaway routine.
 - In a terminal the console front end shows an emulated 40x25 C64 screen with border (true-colour ANSI): PETSCII home,
   cursor keys, reverse and the 16 colour codes, scrolling, and `POKE` to screen RAM (1024), colour RAM (55296),
   cursor row/column (214/211), text colour (646), border (53280) and background (53281). Typed letters show as
@@ -148,7 +157,7 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 `USR` without a vector raises `?ILLEGAL QUANTITY`. Relative (`REL`) files, direct-access block commands (`U1`, `B-R`, ...),
 `.tap` pulse images and DOS errors beyond those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed
 above. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`.
-`LOAD` without a device number reads from device 8 (a real C64 defaults to tape). A directory loaded with `LOAD "$"` keeps its
+`LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64. A directory loaded with `LOAD "$"` keeps its
 lines in file order, so several files with the same block count each show up, but it should not be edited or run.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including

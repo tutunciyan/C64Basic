@@ -158,6 +158,8 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
   while the window is open.
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
+- Clipboard: Ctrl+V or Shift+Insert types the clipboard (line breaks become RETURN; characters the C64 keyboard cannot produce are
+  dropped; at most 64 KB), so a BASIC listing can be pasted in. Ctrl+C copies the screen as text.
 - Character sets: the real ROM is copyrighted, so the built-in set is drawn in this project (C64-style letters and digits,
   hand-drawn graphics for screen codes 64-127, a lower-case set, reversed halves). Shift+Alt (Shift+Commodore) or
   `PRINT CHR$(14)` / `CHR$(142)` switches between the upper-case/graphics and lower-case sets (`$D018` bit 1). To use the

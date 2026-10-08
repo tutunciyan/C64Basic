@@ -37,6 +37,10 @@ and tick them off. Note the OS and the result.
 - [ ] `POKE 1024,1:POKE 55296,5` draws a white-ish A in the top-left corner.
 - [ ] samples/sysdemo.bas fills the screen with a pattern and returns to the prompt.
 
+## Clipboard
+- [ ] Copy a short BASIC program from a text editor, press Ctrl+V (and again with Shift+Insert): it is typed line by line and `RUN` works. Tabs and accented characters do not break it.
+- [ ] Ctrl+C after `PRINT "HELLO"` puts the screen text on the clipboard.
+
 ## Files
 - [ ] `dotnet run --project src/C64Basic.Gui -- --disk test.d64` creates the image; `SAVE "X",8` then `LOAD "$",8`, `LIST` shows it.
 - [ ] Dropping a `.d64` onto the window mounts it and lists the directory; dropping a `.bas` or BASIC `.prg` loads and runs it.

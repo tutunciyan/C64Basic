@@ -197,6 +197,19 @@ static unsafe class SdlHost
                 return true;
         }
 
+        // clipboard: Ctrl+V or Shift+Insert types the text, Ctrl+C copies the screen
+        if (!repeat && ((control && code == Scancode.ScancodeV) || (shift && code == Scancode.ScancodeInsert)))
+        {
+            string? text = Sdl.GetClipboardTextS();
+            if (!string.IsNullOrEmpty(text)) console.Paste(text);
+            return true;
+        }
+        if (!repeat && control && code == Scancode.ScancodeC)
+        {
+            Sdl.SetClipboardText(console.ScreenText());
+            return true;
+        }
+
         byte bit = KeyMap.JoystickBit(code);
         if (bit != 0)
         {

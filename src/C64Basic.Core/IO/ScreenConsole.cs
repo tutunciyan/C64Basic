@@ -34,8 +34,11 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
     public int CursorRow => _editor?.Row ?? 0;
     public int CursorColumn => _editor?.Column ?? 0;
 
+    Bus? _screenBus;
+
     public void Attach(Bus bus)
     {
+        _screenBus = bus;
         _editor = new ScreenEditor(bus);
         bus.Input = this;
     }
@@ -109,6 +112,47 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
     {
         foreach (char c in text) _keys.Enqueue(c == '\n' ? '\r' : c);
         _keyArrived.Set();
+    }
+
+    /// <summary>Longest text a paste is allowed to bring in, so a huge clipboard cannot flood the keyboard queue.</summary>
+    public const int MaxPaste = 65536;
+
+    /// <summary>
+    /// Types clipboard text: line breaks become RETURN, tabs become spaces, and anything the C64 keyboard cannot produce (control
+    /// characters, non-ASCII symbols other than the pound sign) is dropped. Returns how many characters were typed.
+    /// </summary>
+    public int Paste(string text)
+    {
+        var sb = new System.Text.StringBuilder(Math.Min(text.Length, MaxPaste));
+        for (int i = 0; i < text.Length && sb.Length < MaxPaste; i++)
+        {
+            char c = text[i];
+            if (c == '\r') { sb.Append('\r'); if (i + 1 < text.Length && text[i + 1] == '\n') i++; }
+            else if (c == '\n') sb.Append('\r');
+            else if (c == '\t') sb.Append(' ');
+            else if ((c >= ' ' && c < '\u007f') || c == '£') sb.Append(c);
+        }
+        Inject(sb.ToString());
+        return sb.Length;
+    }
+
+    /// <summary>The text on the screen, one line per row with trailing spaces and empty rows at the end removed (for copying).</summary>
+    public string ScreenText()
+    {
+        if (_editor == null) return "";
+        var rows = new List<string>();
+        lock (_screenLock)
+        {
+            for (int r = 0; r < ScreenEditor.Rows; r++)
+            {
+                var sb = new System.Text.StringBuilder(ScreenEditor.Columns);
+                for (int c = 0; c < ScreenEditor.Columns; c++)
+                    sb.Append(Runtime.Petscii.ScreenGlyph(_screenBus!.Ram[ScreenEditor.ScreenRam + r * ScreenEditor.Columns + c]));
+                rows.Add(sb.ToString().TrimEnd(' '));
+            }
+        }
+        while (rows.Count > 0 && rows[^1].Length == 0) rows.RemoveAt(rows.Count - 1);
+        return string.Join("\n", rows);
     }
 
     /// <summary>Lets a blocked <see cref="ReadLine"/> return null: the window was closed.</summary>

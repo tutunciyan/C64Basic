@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using C64Basic.Core.Runtime;
 
 namespace C64Basic.Core.Machine;
@@ -24,6 +25,16 @@ public sealed class Bus
     public Vic2 Vic { get; }
     public Sid Sound { get; } = new();
     public ColorRam Color { get; } = new();
+    public Cia1 Cia1 { get; }
+    public Cia2 Cia2 { get; }
+
+    /// <summary>Keys and joysticks, supplied by the host. Without one nothing is pressed and PEEK 197/653 read plain RAM.</summary>
+    public IInputDevice? Input { get; set; }
+
+    readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    /// <summary>Seconds since power-on. Raster, CIA timers, time of day and TI all run from it; tests replace it.</summary>
+    public Func<double> Seconds { get; set; }
 
     readonly byte[] _io = new byte[IoLength];
     readonly IMemoryMapped?[] _chips = new IMemoryMapped?[IoLength];
@@ -33,18 +44,21 @@ public sealed class Bus
 
     public Bus()
     {
+        Seconds = () => _clock.Elapsed.TotalSeconds;
         Vic = new Vic2(this);
+        Cia1 = new Cia1(this);
+        Cia2 = new Cia2(this);
         Ram[0] = 0x2F;      // CPU port direction
         Ram[1] = 0x37;      // BASIC, KERNAL and I/O visible
         Ram[646] = 14;      // text colour
-        _io[56334 - IoStart] = 0x81;  // CIA 1 control register A
         Map(Vic2.Start, Vic2.Length, Vic);
         Map(Sid.Start, Sid.Length, Sound);
         Map(ColorRam.Start, ColorRam.Length, Color);
-        _io[0xDD00 - IoStart] = 0x97; // CIA 2 port A: VIC bank 0
+        Map(Cia1.Start, Cia.Length, Cia1);
+        Map(Cia2.Start, Cia.Length, Cia2);
     }
 
-    /// <summary>A byte of the I/O area as stored for addresses without a chip (CIA 2's VIC bank bits live here for now).</summary>
+    /// <summary>A byte of the I/O area as stored for addresses without a chip (the VIC bank bits come from CIA 2 through this).</summary>
     public byte IoByte(int address) => _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
 
     public void Map(int start, int length, IMemoryMapped chip)
@@ -65,6 +79,7 @@ public sealed class Bus
             if (CharRomVisible) return CharRom.Read(address);
             if (IoVisible) return _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
         }
+        if (Input != null && (address == 197 || address == 653)) return Keyboard.Read(Input, address);
         return Ram[address];
     }
 

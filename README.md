@@ -17,7 +17,7 @@ Press Ctrl+C to act as RUN/STOP.
 
 | Path | Contents |
 |---|---|
-| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II, SID, colour RAM), `Repl` |
+| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II, SID, CIA, colour RAM), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
 | `samples/` | example programs |
@@ -67,7 +67,7 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   are exact, a few graphics are drawn, and the rest read as blank). `ASC` of a typed letter gives its upper-case PETSCII code.
   Programs that rely on 40-column line wrapping (e.g. `samples/banner.bas`) run correctly, since the screen is 40 columns by default.
 
-## VIC-II and SID (core only)
+## VIC-II, SID and CIA (core only)
 
 `interp.Bus` models the VIC-II and SID registers. `Bus.Vic.Render(uint[])` draws a 384x272 ARGB frame: text,
 multicolour and extended-colour text, hires and multicolour bitmaps, custom character sets, the VIC bank from
@@ -78,11 +78,19 @@ sync, ADSR, a state-variable filter and volume. `IVideoDevice` and `IAudioDevice
 implements to show and play these; the terminal front end does not, so sprites and sound only come out through a
 host that calls them (a GUI is planned). A SID frequency register tops out near 3.8 kHz, as on a real chip.
 
+`Bus.Cia1`/`Cia2` are 6526 chips with two ports, two timers (also chained), time of day with the hours latch, and an
+interrupt register; they run from `Bus.Seconds`. CIA 1 reads a host-supplied `IInputDevice` through the real keyboard
+matrix and joystick ports (`PEEK(56320)` for joystick 2), CIA 2 port A picks the VIC bank, and CIA 1 timer A is
+the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `IInputDevice` set on `Bus.Input`,
+`PEEK(197)` gives the KERNAL key index (64 = none) and `PEEK(653)` the shift/C=/CTRL flags. The jiffy clock at
+160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. The PB6/PB7 timer outputs, the serial
+shift register and TOD alarms are not modelled, and the terminal front end does not supply input.
+
 ## Not implemented
 
 Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` raises `?ILLEGAL QUANTITY`.
 Relative and program files, disk commands such as scratch, and any `POKE`/`PEEK` hardware
-registers not listed above (CIA ports and timers, for instance) are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
+registers not listed above are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is

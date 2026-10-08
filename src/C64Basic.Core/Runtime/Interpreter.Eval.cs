@@ -7,7 +7,7 @@ public sealed partial class Interpreter
     // ---------- variables ----------
     static Value DefaultFor(VarType t) => t == VarType.Str ? Value.Empty : Value.Zero;
 
-    double NowSeconds() => (_clockOffsetSeconds + _clock.Elapsed.TotalSeconds) % 86400;
+    double NowSeconds() => (_clockOffsetSeconds + _bus.Seconds()) % 86400;
 
     Value GetVar(string key, VarType type)
     {
@@ -38,7 +38,7 @@ public sealed partial class Interpreter
                     if (s.Length != 6 || !s.All(char.IsAsciiDigit)) throw new BasicException(ErrorCode.IllegalQuantity);
                     int h = int.Parse(s[..2]), m = int.Parse(s[2..4]), sec = int.Parse(s[4..]);
                     if (h > 23 || m > 59 || sec > 59) throw new BasicException(ErrorCode.IllegalQuantity);
-                    _clockOffsetSeconds = h * 3600 + m * 60 + sec - _clock.Elapsed.TotalSeconds;
+                    _clockOffsetSeconds = h * 3600 + m * 60 + sec - _bus.Seconds();
                     return;
                 }
         }

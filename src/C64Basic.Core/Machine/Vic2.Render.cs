@@ -54,6 +54,7 @@ public sealed partial class Vic2
 
     void Compose()
     {
+        _bank = ~_bus.IoByte(0xDD00) & 3; // CIA 2 port A, read once per frame
         DrawGraphics();
         DrawSprites();
     }

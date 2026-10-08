@@ -59,8 +59,20 @@ public sealed partial class Interpreter
     /// <summary>The memory map PEEK and POKE go through; front ends watch it for hardware writes.</summary>
     public Bus Bus => _bus;
 
-    int Peek(int address) => _bus.Read(address);
-    readonly Stopwatch _clock = Stopwatch.StartNew();
+    int Peek(int address)
+    {
+        if (address >= 160 && address <= 162) SyncJiffies();
+        return _bus.Read(address);
+    }
+
+    /// <summary>The jiffy clock at 160-162 (high byte first) reads the same time as TI.</summary>
+    void SyncJiffies()
+    {
+        long jiffies = (long)Math.Floor(NowSeconds() * 60);
+        _bus.Ram[160] = (byte)(jiffies >> 16);
+        _bus.Ram[161] = (byte)(jiffies >> 8);
+        _bus.Ram[162] = (byte)jiffies;
+    }
     double _clockOffsetSeconds;
     Random _rng = new();
 
@@ -394,6 +406,8 @@ public sealed partial class Interpreter
                     int addr = ToInt(Eval(p.Address), 0, 65535);
                     int val = ToInt(Eval(p.Value), 0, 255);
                     _bus.Write(addr, (byte)val);
+                    if (addr >= 160 && addr <= 162)
+                        _clockOffsetSeconds = (_bus.Ram[160] << 16 | _bus.Ram[161] << 8 | _bus.Ram[162]) / 60.0 - _bus.Seconds();
                     if (addr == 211) Col = Math.Min(val, 79);
                     break;
                 }

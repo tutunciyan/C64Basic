@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace C64Basic.Core.Machine;
 
 /// <summary>
@@ -23,17 +21,19 @@ public sealed partial class Vic2 : IMemoryMapped
 
     readonly Bus _bus;
     readonly byte[] _reg = new byte[RegisterCount];
-    readonly Stopwatch _clock = Stopwatch.StartNew();
-    int _rasterCompare, _lastRaster;
+    int _rasterCompare, _lastRaster, _bank;
     byte _spriteSprite, _spriteBackground;
 
-    /// <summary>Seconds since power-on; the raster counter runs from it. Tests replace it.</summary>
-    public Func<double> Seconds { get; set; }
+    /// <summary>The bus clock; the raster counter runs from it.</summary>
+    public Func<double> Seconds
+    {
+        get => _bus.Seconds;
+        set => _bus.Seconds = value;
+    }
 
     public Vic2(Bus bus)
     {
         _bus = bus;
-        Seconds = () => _clock.Elapsed.TotalSeconds;
         _reg[Control1] = 0x1B;
         _reg[Control2] = 0xC8;
         _reg[MemoryPointers] = 0x15;
@@ -142,7 +142,7 @@ public sealed partial class Vic2 : IMemoryMapped
     /// </summary>
     internal byte VicRead(int address14)
     {
-        int bank = ~_bus.IoByte(0xDD00) & 3;
+        int bank = _bank;
         address14 &= 0x3FFF;
         if ((bank & 1) == 0 && address14 >= 0x1000 && address14 < 0x2000)
             return Runtime.CharRom.Read(0xD000 + address14 - 0x1000);

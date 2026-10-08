@@ -411,6 +411,7 @@ static unsafe class SdlHost
             switch (Path.GetExtension(path).ToLowerInvariant())
             {
                 case ".d64":
+                case ".g64":
                     interpreter.MountDrive(8, ImageFiles.OpenDisk(path));
                     console.Inject("\u0093" + "LOAD\"$\",8\rLIST\r");
                     break;

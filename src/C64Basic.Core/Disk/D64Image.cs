@@ -9,7 +9,7 @@ namespace C64Basic.Core.Disk;
 /// </summary>
 public sealed partial class D64Image : IDiskDrive
 {
-    public const int Size = 174848, Tracks = 35, DirTrack = 18, BamSector = 0;
+    public const int Size = 174848, Tracks = 35, DirTrack = 18, BamSector = 0, Sectors = 683;
 
     const int EntrySize = 32, EntriesPerSector = 8, FileInterleave = 10, DirInterleave = 3;
 

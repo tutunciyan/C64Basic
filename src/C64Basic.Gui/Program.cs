@@ -19,7 +19,7 @@ const string Usage = """
       --fullscreen    start full screen
       --type <text>   type this text at startup (\n = RETURN)
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
-      --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
+      --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
@@ -31,7 +31,7 @@ const string Usage = """
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
           F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp).
-          Drop a .d64, .t64, .tap, .prg, .bas or .sav file on the window to mount or load it.
+          Drop a .d64, .g64, .t64, .tap, .prg, .bas or .sav file on the window to mount or load it.
     """;
 
 bool strict = false, fast = false, fullscreen = false;

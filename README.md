@@ -93,6 +93,11 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   length byte. `M-W` writes 2 KB of drive RAM (mirrored every 2 KB up to $1FFF, at most 34 bytes per command) and `M-R` reads it back
   through the command channel (`GET#15,A$`, one byte unless a count is given; afterwards the channel reports the status again). The ROM
   area reads as zero, and `M-E` answers `31, SYNTAX ERROR` because there is no drive processor to run code.
+- **G64 images**: `--disk game.g64` (or dropping the file on the window) decodes the raw GCR tracks into the 683 ordinary sectors and mounts
+  them as a read-only drive (changes stay in memory; the file is never written). A report on stderr says how many sectors were read cleanly
+  and flags anything unusual: half-tracks, tracks past 35, bad checksums, odd speed zones. This only gets the *files* out. Most commercial
+  games on G64s boot through a fast loader that uploads code to the drive with `M-W` and starts it with `M-E`, which needs a real 1541
+  processor, and some rely on the real BASIC ROM's stack behaviour; those will list and load file by file but not start.
 - **Tape**: `--tape` mounts a `.t64` archive or a `.tap` pulse image as device 1 (`LOAD "",1` loads the next program). A `.tap` is decoded
   and encoded in the KERNAL's standard format (leader, countdown, 192-byte header, data block, each recorded twice, odd parity,
   XOR checksum), taking the repeat when the first copy is damaged. Turbo loaders and other formats stay in the image but are not
@@ -215,7 +220,7 @@ A terminal never reports a key release, so each typed key is held on the key mat
 
 ## Not implemented
 
-`USR` without a vector raises `?ILLEGAL QUANTITY`. Running code in the drive (`M-E`), turbo-tape formats and DOS errors beyond
+`USR` without a vector raises `?ILLEGAL QUANTITY`. Running code in the drive (`M-E`, so fast loaders and 1541 copy protection), turbo-tape formats and DOS errors beyond
 those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed above. `PEEK` of screen RAM, colour RAM and the
 cursor (214/211) see printed text everywhere, including `--plain`, which keeps a hidden screen behind the text stream (typed input is not echoed into it).
 `LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64.

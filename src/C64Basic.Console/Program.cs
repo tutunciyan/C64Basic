@@ -18,7 +18,7 @@ const string Usage = """
       --fast          run at full speed instead of C64 speed
       --pixels        draw the real VIC-II picture (sprites, graphics modes) with half blocks instead of the text-only screen;
                       Esc = RUN/STOP, Ctrl+D quits; no sound (use the GUI)
-      --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
+      --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
       -h, --help      show this help
     """;
@@ -116,6 +116,13 @@ finally
 static D64Image OpenDisk(string path)
 {
     Action<byte[]> save = data => File.WriteAllBytes(path, data);
+    if (File.Exists(path) && path.EndsWith(".g64", StringComparison.OrdinalIgnoreCase))
+    {
+        // raw GCR tracks, read as the sectors they hold; changes stay in memory and the file is never written back
+        var (disk, report) = G64Image.Decode(File.ReadAllBytes(path));
+        System.Console.Error.WriteLine($"{Path.GetFileName(path)}: {report}");
+        return new D64Image(disk);
+    }
     if (File.Exists(path)) return new D64Image(File.ReadAllBytes(path), save);
     var blank = D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00", save);
     save(blank.ToArray());

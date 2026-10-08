@@ -95,6 +95,18 @@ public interface IDiskDrive
     /// <summary>Rebuilds the block allocation map from the files that exist.</summary>
     void Validate();
 
+    // ---- direct access to blocks (disk images only) ----
+
+    /// <summary>One 256-byte block, including its two link bytes.</summary>
+    byte[] ReadBlock(int track, int sector) => throw new DriveException(66, track, sector);
+
+    void WriteBlock(int track, int sector, byte[] data) => throw new DriveException(66, track, sector);
+
+    /// <summary>Marks a block used in the allocation map; error 65 (with the next free block) if it already is.</summary>
+    void AllocateBlock(int track, int sector) => throw new DriveException(66, track, sector);
+
+    void FreeBlock(int track, int sector) => throw new DriveException(66, track, sector);
+
     // ---- conveniences with sensible defaults ----
 
     /// <summary>A sequential file as text (PETSCII bytes mapped to characters, CR between records).</summary>
@@ -153,4 +165,13 @@ public static class DosText
         if (name.Length == 0) throw new DriveException(34);
         if (name.Length > 16 || name.IndexOfAny(new[] { '*', '?', ',', ':', '=' }) >= 0) throw new DriveException(33);
     }
+}
+
+/// <summary>The buffers of open direct-access channels (OPEN 5,8,5,"#"), which the block commands read and write.</summary>
+public interface IBlockChannels
+{
+    /// <summary>The 256-byte buffer of a channel (its secondary address), or null if none is open.</summary>
+    byte[]? Buffer(int channel);
+
+    void SetPointer(int channel, int pointer);
 }

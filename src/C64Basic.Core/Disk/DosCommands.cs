@@ -1,15 +1,16 @@
 namespace C64Basic.Core.Disk;
 
-/// <summary>The disk drive's command channel (secondary address 15): S, R, N, V, I and C commands.</summary>
+/// <summary>The disk drive command channel (secondary address 15): S, R, N, V, I, C and the direct-access block commands.</summary>
 public static class DosCommands
 {
     /// <summary>Runs one command such as <c>S0:OLD</c> or <c>R:NEW=OLD</c> and returns the status the drive would report.</summary>
-    public static DriveStatus Execute(IDiskDrive drive, string command)
+    public static DriveStatus Execute(IDiskDrive drive, string command, IBlockChannels? channels = null)
     {
         command = command.Trim('\r', '\n', ' ');
         if (command.Length == 0) return DriveStatus.Ok;
         try
         {
+            if (BlockCommand(drive, command, channels) is { } blockResult) return blockResult;
             int colon = command.IndexOf(':');
             string verb = (colon >= 0 ? command[..colon] : command).Trim().ToUpperInvariant();
             string args = colon >= 0 ? command[(colon + 1)..] : "";
@@ -67,6 +68,54 @@ public static class DosCommands
         catch (DriveException e)
         {
             return DriveStatus.Of(e.Code, e.Track, e.Sector);
+        }
+    }
+
+    static readonly string[] BlockVerbs = { "U1", "UA", "U2", "UB", "B-R", "B-W", "B-P", "B-A", "B-F" };
+
+    /// <summary>
+    /// The direct-access commands: U1/UA and B-R read a block into a channel's buffer, U2/UB and B-W write it back, B-P moves the
+    /// buffer pointer, B-A and B-F allocate and free a block in the allocation map. Returns null for any other command.
+    /// </summary>
+    static DriveStatus? BlockCommand(IDiskDrive drive, string command, IBlockChannels? channels)
+    {
+        string upper = command.ToUpperInvariant();
+        string? verb = BlockVerbs.FirstOrDefault(v => upper.StartsWith(v));
+        if (verb == null) return null;
+
+        var parts = command[verb.Length..].Split(new[] { ' ', ',', ':' }, StringSplitOptions.RemoveEmptyEntries);
+        var n = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+            if (!int.TryParse(parts[i], out n[i])) return DriveStatus.Of(30);
+
+        switch (verb)
+        {
+            case "U1" or "UA" or "B-R" or "U2" or "UB" or "B-W":
+                {
+                    if (n.Length < 4) return DriveStatus.Of(30);
+                    int channel = n[0], track = n[2], sector = n[3];
+                    var buffer = channels?.Buffer(channel) ?? throw new DriveException(70);
+                    if (verb is "U1" or "UA" or "B-R")
+                    {
+                        drive.ReadBlock(track, sector).CopyTo(buffer, 0);
+                        channels!.SetPointer(channel, 0);
+                    }
+                    else drive.WriteBlock(track, sector, buffer);
+                    return DriveStatus.Ok;
+                }
+            case "B-P":
+                {
+                    if (n.Length < 2 || n[1] is < 0 or > 255) return DriveStatus.Of(30);
+                    if (channels?.Buffer(n[0]) == null) throw new DriveException(70);
+                    channels.SetPointer(n[0], n[1]);
+                    return DriveStatus.Ok;
+                }
+            default: // B-A, B-F
+                {
+                    if (n.Length < 3) return DriveStatus.Of(30);
+                    if (verb == "B-A") drive.AllocateBlock(n[1], n[2]); else drive.FreeBlock(n[1], n[2]);
+                    return DriveStatus.Ok;
+                }
         }
     }
 

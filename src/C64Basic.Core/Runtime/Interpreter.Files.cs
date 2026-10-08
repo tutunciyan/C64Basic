@@ -10,6 +10,9 @@ sealed class BasicFile
 {
     public int Number;
     public int Device;
+    public int Secondary;
+    /// <summary>The 256-byte buffer of a direct-access channel (OPEN n,8,n,"#"); <see cref="Pos"/> is its pointer.</summary>
+    public byte[]? Block;
     public FileKind Kind;
     public string Path = "";
     public bool Writing, Append;
@@ -78,7 +81,13 @@ public sealed partial class Interpreter
                     f.Text = StatusOf(dev) + "\r";
                     if (name.Length > 0) RunDriveCommand(f, name); // OPEN 15,8,15,"S:OLD" runs it at once
                 }
+                else if (name.StartsWith('#'))
+                {
+                    f.Block = new byte[256];
+                    f.Writing = true; // like the command channel, a buffer is both read and written
+                }
                 else OpenDisk(f, name, sa);
+                f.Secondary = sa;
                 break;
             default:
                 throw new BasicException(ErrorCode.DeviceNotPresent);
@@ -179,6 +188,12 @@ public sealed partial class Interpreter
     {
         if (f.Kind == FileKind.Screen) { Write(s.Replace('\r', '\n')); return; }
         if (f.Kind == FileKind.Command) { CommandInput(f, s); return; }
+        if (f.Block != null)
+        {
+            foreach (char c in s)
+                if (f.Pos < 256) f.Block[f.Pos++] = DosText.ToByte(c); // bytes go in at the pointer; past the end they are lost
+            return;
+        }
         f.Put(s);
     }
 
@@ -193,6 +208,13 @@ public sealed partial class Interpreter
             if (line == null) throw new InputEndedException();
             f.Text = line + "\r";
             f.Pos = 0;
+        }
+        if (f.Block != null)
+        {
+            if (f.Pos >= 256) { _st = 64; return -1; }
+            char ch = Petscii.ToChar(f.Block[f.Pos++]);
+            if (f.Pos >= 256) _st = 64;
+            return ch;
         }
         if (f.Kind == FileKind.Command && f.Pos >= f.Text.Length)
         {
@@ -209,7 +231,7 @@ public sealed partial class Interpreter
 
     static void RequireInput(BasicFile f)
     {
-        if (f.Writing && f.Kind != FileKind.Command) throw new BasicException(ErrorCode.NotInputFile);
+        if (f.Writing && f.Kind != FileKind.Command && f.Block == null) throw new BasicException(ErrorCode.NotInputFile);
     }
 
     static bool IsStrTarget(Expr t) => t is VarRef { Type: VarType.Str } or ArrayRef { Type: VarType.Str };

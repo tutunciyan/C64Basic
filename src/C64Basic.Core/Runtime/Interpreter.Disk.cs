@@ -243,9 +243,26 @@ public sealed partial class Interpreter
     }
 
     // ---------- command channel ----------
+    /// <summary>Lets the block commands find the buffers of open "#" channels by their secondary address.</summary>
+    sealed class BlockChannels : IBlockChannels
+    {
+        readonly Interpreter _interp;
+        public BlockChannels(Interpreter interp) => _interp = interp;
+
+        BasicFile? Find(int channel) =>
+            _interp._files.Values.FirstOrDefault(f => f.Block != null && f.Secondary == channel);
+
+        public byte[]? Buffer(int channel) => Find(channel)?.Block;
+
+        public void SetPointer(int channel, int pointer)
+        {
+            if (Find(channel) is { } f) f.Pos = pointer;
+        }
+    }
+
     void RunDriveCommand(BasicFile f, string command)
     {
-        var status = DosCommands.Execute(DriveFor(f.Device), command);
+        var status = DosCommands.Execute(DriveFor(f.Device), command, new BlockChannels(this));
         SetStatus(f.Device, status);
         f.Text = status + "\r";
         f.Pos = 0;

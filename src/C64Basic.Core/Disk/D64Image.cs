@@ -256,6 +256,39 @@ public sealed class D64Image : IDiskDrive
         }
     }
 
+    // ---------- direct access ----------
+    public byte[] ReadBlock(int track, int sector) => Sector(track, sector).ToArray();
+
+    public void WriteBlock(int track, int sector, byte[] data)
+    {
+        var block = Sector(track, sector);
+        block.Clear();
+        data.AsSpan(0, Math.Min(256, data.Length)).CopyTo(block);
+        Changed();
+    }
+
+    public void AllocateBlock(int track, int sector)
+    {
+        Offset(track, sector); // range check
+        if (!IsFree(track, sector))
+        {
+            // DOS suggests the next free block after this one
+            for (int t = track; t <= Tracks; t++)
+                for (int s = t == track ? sector + 1 : 0; s < SectorsIn(t); s++)
+                    if (IsFree(t, s)) throw new DriveException(65, t, s);
+            throw new DriveException(65, 0, 0);
+        }
+        SetFree(track, sector, false);
+        Changed();
+    }
+
+    public void FreeBlock(int track, int sector)
+    {
+        Offset(track, sector);
+        SetFree(track, sector, true);
+        Changed();
+    }
+
     public int Scratch(string pattern)
     {
         int count = 0;

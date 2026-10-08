@@ -146,5 +146,18 @@ above. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed te
 lines in file order, so several files with the same block count each show up, but it should not be edited or run.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
-`GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is
-split by the tokenizer unless you use `--strict`.
+`GOSUB` inside an `IF` clause. The extension words `FIND`, `TRACE`, `RENUMBER` and `ELSE` can be used as variable names (the
+extension commands are only recognised at the start of a statement and not before `=`, `ELSE` only after a finished clause), but
+`AUTO` and `DELETE` split into `AU`+`TO` and `DE`+`LET`+`E` exactly as they would on a real C64. `--strict` removes the extensions.
+
+## Samples
+
+`samples/` holds programs that run in the terminal (`hello`, `sieve`, `banner`, `ball`, `extras`, `disk`, `sysdemo`) and ones that
+need the GUI to be seen or heard: `sprite.bas` (a bouncing sprite), `sid.bas` (a scale on the SID), `joystick.bas` (numpad
+joystick). The test suite runs them all headless.
+
+## Tests and releases
+
+`dotnet test` runs the xUnit suite. Klaus Dormann's 6502 functional test runs too if `C64_6502_FUNCTIONAL_TEST` points at
+`6502_functional_test.bin` (not included: it is GPL). `.github/workflows/ci.yml` builds and tests on Linux and Windows, and a
+`v*` tag publishes self-contained terminal and GUI builds for win-x64, linux-x64 and osx-arm64 as release assets.

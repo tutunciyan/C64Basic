@@ -56,6 +56,39 @@ public sealed class Lexer
         return null;
     }
 
+    static bool IsExtension(string keyword) => Array.IndexOf(Keywords.Extensions, keyword) >= 0;
+
+    /// <summary>True when a statement can begin after this token (start of line, colon, THEN, ELSE).</summary>
+    static bool StartsStatement(List<Token> toks) =>
+        toks.Count == 0 || toks[^1].Kind == TokKind.Colon || toks[^1].IsKw("THEN") || toks[^1].IsKw("ELSE");
+
+    /// <summary>
+    /// A keyword at the start of a name. The stock ones are recognised anywhere, like on a C64; the extensions only where
+    /// they make sense, so a variable can still be called FIND or AUTO: commands only at the start of a statement and not
+    /// when an assignment follows, ELSE only after a complete clause.
+    /// </summary>
+    string? KeywordAt(string s, int i, List<Token> toks)
+    {
+        string? kw = MatchKeyword(s, i);
+        if (kw == null || !IsExtension(kw)) return kw;
+
+        if (kw == "ELSE")
+        {
+            if (toks.Count == 0) return null;
+            var prev = toks[^1];
+            // a clause ends after a value, or after a statement that needs no operand
+            bool clauseEnded = prev.Kind is TokKind.Number or TokKind.String or TokKind.Name or TokKind.RParen or TokKind.Raw
+                || (prev.Kind == TokKind.Keyword
+                    && prev.Text is "END" or "STOP" or "RETURN" or "NEXT" or "CLR" or "RESTORE" or "NEW" or "CONT");
+            return clauseEnded ? kw : null;
+        }
+
+        if (!StartsStatement(toks)) return null;
+        int after = i + kw.Length;
+        while (after < s.Length && s[after] == ' ') after++;
+        return after < s.Length && s[after] == '=' ? null : kw; // "FIND=3" assigns to a variable
+    }
+
     public List<Token> Lex(string s)
     {
         var toks = new List<Token>();
@@ -104,7 +137,7 @@ public sealed class Lexer
 
             if (char.IsAsciiLetter(c))
             {
-                string? kw = MatchKeyword(s, i);
+                string? kw = KeywordAt(s, i, toks);
                 if (kw != null)
                 {
                     toks.Add(new Token(TokKind.Keyword, kw, i, kw.Length));
@@ -132,7 +165,7 @@ public sealed class Lexer
                 var sb = new StringBuilder();
                 while (i < n && char.IsAsciiLetterOrDigit(s[i]))
                 {
-                    if (i > nameStart && char.IsAsciiLetter(s[i]) && MatchKeyword(s, i) != null) break;
+                    if (i > nameStart && char.IsAsciiLetter(s[i]) && MatchKeyword(s, i) is { } inner && !IsExtension(inner)) break;
                     sb.Append(char.ToUpperInvariant(s[i]));
                     i++;
                 }

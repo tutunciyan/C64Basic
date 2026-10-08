@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build C64Basic.slnx --configuration Release
+      - run: dotnet test tests/C64Basic.Tests --configuration Release --no-build
+
+  publish:
+    # self-contained builds of the terminal and window versions, attached to a GitHub release when a v* tag is pushed
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    strategy:
+      matrix:
+        rid: [win-x64, linux-x64, osx-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: >
+          dotnet publish src/C64Basic.Console -c Release -r ${{ matrix.rid }} --self-contained
+          -p:PublishSingleFile=true -o out/console
+      - run: >
+          dotnet publish src/C64Basic.Gui -c Release -r ${{ matrix.rid }} --self-contained
+          -o out/gui   # a folder, not a single file: SDL2 must sit next to the executable
+      - run: |
+          mkdir dist
+          cp -r samples out/console/ && cp -r samples out/gui/
+          (cd out/console && zip -r ../../dist/C64Basic-console-${{ matrix.rid }}.zip .)
+          (cd out/gui && zip -r ../../dist/C64Basic-gui-${{ matrix.rid }}.zip .)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip

@@ -156,10 +156,10 @@ public sealed partial class Vic2 : IMemoryMapped
     }
 }
 
-/// <summary>Colour RAM, 55296-56295: one nibble per screen cell.</summary>
+/// <summary>Colour RAM, 55296-56319: one nibble per screen cell (the first 1000 are shown).</summary>
 public sealed class ColorRam : IMemoryMapped
 {
-    public const int Start = 0xD800, Length = 1000;
+    public const int Start = 0xD800, Length = 1024; // 1000 cells are visible; the rest exists but is unused
 
     public byte[] Data { get; } = new byte[Length];
 

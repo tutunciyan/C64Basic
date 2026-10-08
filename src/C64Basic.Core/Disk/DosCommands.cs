@@ -4,14 +4,16 @@ namespace C64Basic.Core.Disk;
 public static class DosCommands
 {
     /// <summary>Runs one command such as <c>S0:OLD</c> or <c>R:NEW=OLD</c> and returns the status the drive would report.</summary>
-    public static DriveStatus Execute(IDiskDrive drive, string command, IBlockChannels? channels = null)
+    public static DriveStatus Execute(IDiskDrive drive, string command, IBlockChannels? channels = null, DriveMemory? memory = null)
     {
         bool position = command.Length > 0 && char.ToUpperInvariant(command[0]) == 'P';
-        if (!position) command = command.Trim('\r', '\n', ' '); // the P command carries raw bytes, which may look like spaces
+        bool memoryCommand = command.StartsWith("M-", StringComparison.OrdinalIgnoreCase);
+        if (!position && !memoryCommand) command = command.Trim('\r', '\n', ' '); // the P command carries raw bytes, which may look like spaces
         if (command.Length == 0) return DriveStatus.Ok;
         try
         {
             if (position) return PositionCommand(command, channels);
+            if (memoryCommand) return MemoryCommand(command, memory);
             if (BlockCommand(drive, command, channels) is { } blockResult) return blockResult;
             int colon = command.IndexOf(':');
             string verb = (colon >= 0 ? command[..colon] : command).Trim().ToUpperInvariant();
@@ -83,6 +85,41 @@ public static class DosCommands
         int record = DosText.ToByte(command[2]) | DosText.ToByte(command[3]) << 8;
         int position = command.Length > 4 ? DosText.ToByte(command[4]) : 1;
         return channels?.Position(channel, record, position) ?? throw new DriveException(70);
+    }
+
+    /// <summary>
+    /// M-R address-low address-high [count] reads drive memory (the bytes come back on the command channel), M-W address-low
+    /// address-high count data... writes it. M-E would run a routine in the drive, which has no processor here: syntax error.
+    /// </summary>
+    static DriveStatus MemoryCommand(string command, DriveMemory? memory)
+    {
+        if (command.Length < 3) return DriveStatus.Of(31);
+        char verb = char.ToUpperInvariant(command[2]);
+        if (verb is not ('R' or 'W' or 'E')) return DriveStatus.Of(31);
+        if (command.Length < 5) return DriveStatus.Of(30);
+        int address = DosText.ToByte(command[3]) | DosText.ToByte(command[4]) << 8;
+        memory ??= new DriveMemory();
+        switch (verb)
+        {
+            case 'R':
+                {
+                    int count = command.Length > 5 ? DosText.ToByte(command[5]) : 1;
+                    if (count == 0) count = 1;
+                    var reply = new byte[count];
+                    for (int i = 0; i < count; i++) reply[i] = memory.Read(address + i);
+                    return DriveStatus.Ok with { Reply = reply };
+                }
+            case 'W':
+                {
+                    if (command.Length < 6) return DriveStatus.Of(30);
+                    int count = DosText.ToByte(command[5]);
+                    if (count > 34 || command.Length < 6 + count) return DriveStatus.Of(32);   // the command buffer holds 34 bytes
+                    for (int i = 0; i < count; i++) memory.Write(address + i, DosText.ToByte(command[6 + i]));
+                    return DriveStatus.Ok;
+                }
+            default:
+                return DriveStatus.Of(31);
+        }
     }
 
     static readonly string[] BlockVerbs = { "U1", "UA", "U2", "UB", "B-R", "B-W", "B-P", "B-A", "B-F" };

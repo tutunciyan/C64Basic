@@ -10,6 +10,7 @@ public sealed partial class Interpreter
 {
     readonly Dictionary<int, IDiskDrive> _drives = new();
     readonly Dictionary<int, DriveStatus> _driveStatus = new();
+    readonly Dictionary<int, DriveMemory> _driveMemory = new();
     bool _quietDisk;
 
     /// <summary>Attaches a drive (a mounted <c>.d64</c>, a tape image, ...) as a device number.</summary>
@@ -264,9 +265,11 @@ public sealed partial class Interpreter
 
     void RunDriveCommand(BasicFile f, string command)
     {
-        var status = DosCommands.Execute(DriveFor(f.Device), command, new BlockChannels(this));
-        SetStatus(f.Device, status);
-        f.Text = status + "\r";
+        if (!_driveMemory.TryGetValue(f.Device, out var memory)) _driveMemory[f.Device] = memory = new DriveMemory();
+        var status = DosCommands.Execute(DriveFor(f.Device), command, new BlockChannels(this), memory);
+        f.Raw = status.Reply != null;
+        SetStatus(f.Device, f.Raw ? DriveStatus.Ok : status);
+        f.Text = f.Raw ? DosText.Decode(status.Reply!) : status + "\r";
         f.Pos = 0;
     }
 
@@ -287,6 +290,20 @@ public sealed partial class Interpreter
                 all = all[5..];
                 if (all.StartsWith('\r')) all = all[1..];
                 else if (all.Length == 0) f.SkipCommandCr = true; // PRINT# sends its CR separately
+                continue;
+            }
+            if (all.Length >= 3 && all.StartsWith("M-", StringComparison.OrdinalIgnoreCase) && char.ToUpperInvariant(all[2]) is 'R' or 'W')
+            {
+                // memory commands carry raw bytes, which can be CRs: M-W has a length byte, M-R an optional count
+                bool write = char.ToUpperInvariant(all[2]) == 'W';
+                if (all.Length < 5) break;
+                int length = write ? (all.Length >= 6 ? 6 + DosText.ToByte(all[5]) : int.MaxValue)
+                                   : (all.Length >= 6 && all[5] != '\r' ? 6 : 5);
+                if (all.Length < length || (!write && all.Length == 5)) break;   // wait for the rest (or the CR that ends M-R)
+                RunDriveCommand(f, all[..length]);
+                all = all[length..];
+                if (all.StartsWith('\r')) all = all[1..];
+                else if (all.Length == 0) f.SkipCommandCr = true;                // PRINT# sends its CR separately
                 continue;
             }
             int cr = all.IndexOf('\r');

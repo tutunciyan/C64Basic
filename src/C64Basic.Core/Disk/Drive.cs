@@ -29,6 +29,9 @@ public sealed class DriveException : Exception
 /// <summary>The drive's error-channel state.</summary>
 public readonly record struct DriveStatus(int Code, string Message, int Track = 0, int Sector = 0)
 {
+    /// <summary>Raw bytes the next reads of the command channel return instead of the status (the answer to M-R).</summary>
+    public byte[]? Reply { get; init; }
+
     public static readonly DriveStatus Ok = new(0, "OK");
 
     public static DriveStatus Of(int code, int track = 0, int sector = 0) => new(code, MessageFor(code), track, sector);

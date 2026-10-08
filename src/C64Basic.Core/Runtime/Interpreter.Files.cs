@@ -26,6 +26,10 @@ sealed class BasicFile
     public FileKind Kind;
     public string Path = "";
     public bool Writing, Append;
+    /// <summary>The text is raw bytes from M-R, not a status line.</summary>
+    public bool Raw;
+    /// <summary>The drive refused the OPEN (60, 63): the channel stays but reads nothing and writes nowhere.</summary>
+    public bool Failed;
     public string Text = "";
     public int Pos;
     public readonly StringBuilder Buffer = new();
@@ -120,6 +124,7 @@ public sealed partial class Interpreter
         if (path.Length == 0) throw new BasicException(ErrorCode.MissingFileName);
 
         bool? write = sa == 1 ? true : sa == 0 ? false : null;
+        FileType? type = null;
         foreach (var p in parts.Skip(1))
         {
             switch (p.Trim().ToUpperInvariant())
@@ -127,24 +132,41 @@ public sealed partial class Interpreter
                 case "W": write = true; break;
                 case "A": write = true; f.Append = true; break;
                 case "R": write = false; break;
+                case "S": type = FileType.Seq; break;
+                case "P": type = FileType.Prg; break;
+                case "U": type = FileType.Usr; break;
             }
         }
         f.Path = path;
         f.Writing = write ?? false;
+        bool replace = name.TrimStart().StartsWith('@');
         var drive = DriveFor(f.Device);
         try
         {
+            // a file that is still being written cannot be opened again: its directory entry is not complete
+            if (_files.Values.Any(o => o.Kind == FileKind.Disk && o.Writing && o.Device == f.Device && o.Rel == null && o.Block == null
+                                       && string.Equals(o.Path, path, StringComparison.OrdinalIgnoreCase)))
+                throw new DriveException(60);
             if (f.Writing)
             {
-                if (f.Append && SafeExists(drive, path)) f.Buffer.Append(drive.ReadText(path));
+                bool exists = SafeExists(drive, path);
+                if (f.Append && exists) f.Buffer.Append(drive.ReadText(path));
+                // the host directory has always overwritten; a disk image refuses unless the name starts with @
+                else if (exists && !replace && drive is not HostDirectoryDrive) throw new DriveException(63);
             }
-            else f.Text = drive.ReadText(path);
+            else
+            {
+                var file = drive.Read(path);
+                if (type != null && file.Type != type) throw new DriveException(64);
+                f.Text = DosText.Decode(file.Data);
+            }
             SetStatus(f.Device, DriveStatus.Ok);
         }
         catch (DriveException e)
         {
             SetStatus(f.Device, DriveStatus.Of(e.Code, e.Track, e.Sector));
             if (e.Code == 62 && !f.Writing) throw new BasicException(ErrorCode.FileNotFound);
+            if (e.Code is 60 or 63) f.Failed = true;   // nothing was opened on the drive: closing must not write the file
         }
     }
 
@@ -164,7 +186,7 @@ public sealed partial class Interpreter
         CommitRelRecord(f, terminated: false);
         switch (f.Kind)
         {
-            case FileKind.Disk when f.Writing && f.Rel == null && f.Block == null:
+            case FileKind.Disk when f.Writing && f.Rel == null && f.Block == null && !f.Failed:
                 try
                 {
                     DriveFor(f.Device).WriteText(f.Path, f.Buffer.ToString(), replace: true);
@@ -234,9 +256,10 @@ public sealed partial class Interpreter
             return ch;
         }
         // the error channel reports the drive's current status, which may have changed since OPEN
-        if (f.Kind == FileKind.Command && f.Pos == 0) f.Text = StatusOf(f.Device) + "\r";
+        if (f.Kind == FileKind.Command && f.Pos == 0 && !f.Raw) f.Text = StatusOf(f.Device) + "\r";
         if (f.Kind == FileKind.Command && f.Pos >= f.Text.Length)
         {
+            f.Raw = false;
             // the status was read: the channel goes back to reporting "00, OK"
             SetStatus(f.Device, DriveStatus.Ok);
             f.Text = DriveStatus.Ok + "\r";

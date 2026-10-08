@@ -202,7 +202,7 @@ no key matrix or joystick for machine code; those are in the GUI. Without `--pix
 
 ## Not implemented
 
-`USR` without a vector raises `?ILLEGAL QUANTITY`. Drive-memory commands (`M-R`, `M-W`, `M-E`), turbo-tape formats and DOS errors beyond
+`USR` without a vector raises `?ILLEGAL QUANTITY`. Running code in the drive (`M-E`), turbo-tape formats and DOS errors beyond
 those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed above. `PEEK` of screen RAM, colour RAM and the
 cursor (214/211) see printed text everywhere, including `--plain`, which keeps a hidden screen behind the text stream (typed input is not echoed into it).
 `LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64.

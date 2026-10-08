@@ -30,6 +30,10 @@ and tick them off. Note the OS and the result.
 - [ ] Pause moves the numpad joystick to port 1 (the title says so): `PRINT PEEK(56321)` changes while holding numpad 8 and `PEEK(56320)` does not. `--joy 1` starts that way.
 - [ ] A game controller (plug it in after the window is open too): D-pad and left stick move the sprite in samples/joystick.bas, A/B/X/Y fire. A second controller drives port 1. Unplugging one releases it.
 
+## Paddles
+- [ ] `POKE 56320,128:PRINT PEEK(54297)` follows the mouse: 0 at the left edge of the window, about 255 at the right; `PEEK(54298)` follows the vertical position. After `--joy 1` (or the Pause key) use `POKE 56320,64`.
+- [ ] While `POKE 56320,128` is set, holding the left mouse button makes `PEEK(56320) AND 4` read 0 (fire A); the right button clears bit 3. Releasing the window focus releases both.
+
 ## Graphics and sound
 - [ ] samples/sprite.bas: a yellow ball bounces off all four edges, including past X=255.
 - [ ] samples/sid.bas: a rising C major scale, no clicks or hangs, silent afterwards.

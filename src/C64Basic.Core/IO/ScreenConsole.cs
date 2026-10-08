@@ -185,6 +185,17 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
         _joystick[source, port] = JoystickMapping.Normalize(bits);
     }
 
+    readonly byte[,] _paddle = new byte[3, 2];
+
+    /// <summary>Sets a paddle position (0-255) for game port 1 or 2; axis 0 is POTX, 1 is POTY.</summary>
+    public void SetPaddle(int port, int axis, int value)
+    {
+        if (port is < 1 or > 2 || axis is < 0 or > 1) return;
+        _paddle[port, axis] = (byte)Math.Clamp(value, 0, 255);
+    }
+
+    public byte Paddle(int port, int axis) => port is < 1 or > 2 || axis is < 0 or > 1 ? (byte)0 : _paddle[port, axis];
+
     public byte KeyColumn(int column)
     {
         int rows = 0;

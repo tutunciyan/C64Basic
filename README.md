@@ -152,7 +152,14 @@ the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `I
 `PEEK(197)` gives the KERNAL key index (64 = none) and `PEEK(653)` the shift/C=/CTRL flags. The jiffy clock at
 160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. Timers A/B drive PB6/PB7 (pulse or toggle), the shift register
 clocks a byte out on timer A (`SerialOut`) or takes one from the host (`ReceiveSerial`) and raises its interrupt, and the TOD alarm sets
-flag 4. The CNT pin is not modelled, and the terminal front end does not supply input.
+flag 4. `Cia.PulseCnt(n)` feeds pulses to the CNT pin: timer A counts them (CRA bit 5), timer B counts them or A's underflows, optionally
+only while `CntHigh` (CRB bits 6-5). Nothing in the front ends drives CNT; it is for hosts and tests. The edge detection on the FLAG
+line is not modelled. Saved machine states (`.sav`, version 2) include the timer outputs, shift register and CNT level; version 1 files load too.
+
+**Paddles:** `IInputDevice.Paddle(port, axis)` is what the SID reads at `$D419`/`$D41A`; CIA 1 port A bits 7-6 pick the game port (`POKE 56320,64` =
+port 1, `128` = port 2, as the C64 documents it; selecting both or neither reads 0). The fire buttons are the joystick's left and right bits
+(`PEEK(56320)` bits 2 and 3). In the GUI the mouse is a paddle on the port the numpad drives: its position is POTX/POTY (0-255 across the
+window), the left button is fire A and the right button fire B.
 
 ## The picture in a terminal (`--pixels`)
 
@@ -161,8 +168,9 @@ shrunk to fit the window (never enlarged) and shown with upper half blocks in tr
 custom character sets and colour effects appear. Text is only legible when the terminal is big enough (about 130 columns and 40 rows
 for readable text; a smaller one still shows graphics clearly). It uses the same screen editor, keyboard buffer and cursor as the GUI,
 so the prompt works the same way: arrows, Home (Shift+Home clears), Backspace/Delete, Insert, F1-F8, Ctrl/Alt+1-8 for colours. Esc
-is RUN/STOP, Ctrl+C breaks too, and Ctrl+D quits. A terminal paste types as fast as it arrives. The terminal version has no sound and
-no key matrix or joystick for machine code; those are in the GUI. Without `--pixels` the terminal shows the faster text-only screen.
+is RUN/STOP, Ctrl+C breaks too, and Ctrl+D quits. A terminal paste types as fast as it arrives. The terminal version has no sound or joystick; those are in the GUI.
+A terminal never reports a key release, so each typed key is held on the key matrix for about 90 ms: machine code scanning
+`$DC00`/`$DC01` (and `PEEK 197`) sees it, but two keys held at once, and Ctrl/Commodore/Shift on their own, are not seen. Without `--pixels` the terminal shows the faster text-only screen.
 
 ## The GUI
 
@@ -198,7 +206,8 @@ no key matrix or joystick for machine code; those are in the GUI. Without `--pix
 - Typing is like the real keyboard: Shift+letter gives a graphics symbol (a capital in the lower-case set), and quote mode
   works. After an opening quote control keys (colours, cursor, CLR) show as reverse symbols and read back as the codes, so
   `PRINT "<Ctrl+2>HELLO"` can be typed. RETURN or the closing quote ends it.
-- Limits: the graphics are approximations of the real shapes. Paddles are not supported.
+- Limits: the graphics are approximations of the real shapes. The mouse is the only paddle (one at a time, on the numpad's port); game
+  controller triggers do not drive paddles.
 
 ## Not implemented
 

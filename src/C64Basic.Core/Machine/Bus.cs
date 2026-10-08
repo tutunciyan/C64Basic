@@ -104,6 +104,7 @@ public sealed class Bus
         Vic = new Vic2(this);
         Cia1 = new Cia1(this);
         Cia2 = new Cia2(this);
+        Sound.Pot = ReadPot;
         Ram[0] = 0x2F;      // CPU port direction
         Ram[1] = 0x37;      // BASIC, KERNAL and I/O visible
         Ram[646] = 14;      // text colour
@@ -114,6 +115,17 @@ public sealed class Bus
         Map(Cia1.Start, Cia.Length, Cia1);
         Map(Cia2.Start, Cia.Length, Cia2);
     }
+
+    /// <summary>
+    /// The paddle the SID sees: CIA 1 port A bits 7-6 pick the game port whose paddles are connected to POTX/POTY (01 = port 1,
+    /// 10 = port 2); with neither or both selected nothing is read.
+    /// </summary>
+    int ReadPot(int axis) => (Cia1.PortAOutput >> 6 & 3) switch
+    {
+        1 => Input?.Paddle(1, axis) ?? 0,
+        2 => Input?.Paddle(2, axis) ?? 0,
+        _ => 0,
+    };
 
     /// <summary>The RAM vectors and BASIC pointers the KERNAL leaves after power-on, as machine code expects them.</summary>
     void InitialiseZeroPageAndVectors()
@@ -145,15 +157,16 @@ public sealed class Bus
         Cia2.SaveState(w);
     }
 
-    public void LoadState(BinaryReader r)
+    /// <summary>Reads what <see cref="SaveState"/> wrote; <paramref name="version"/> is the file's state version (1 predates the CIA extras).</summary>
+    public void LoadState(BinaryReader r, int version = 2)
     {
         ReadInto(r, Ram);
         ReadInto(r, Color.Data);
         ReadInto(r, _io);
         Vic.LoadState(r);
         Sound.LoadState(r);
-        Cia1.LoadState(r);
-        Cia2.LoadState(r);
+        Cia1.LoadState(r, version);
+        Cia2.LoadState(r, version);
     }
 
     static void ReadInto(BinaryReader r, byte[] target) => ReadExact(r, target.Length).CopyTo(target, 0);

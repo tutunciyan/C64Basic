@@ -105,9 +105,12 @@ static unsafe class SdlHost
                     case EventType.Controlleraxismotion:
                         gamepads.Handle(e);
                         break;
+                    case EventType.Mousemotion: MouseMoved(window, e.Motion.X, e.Motion.Y, console); break;
+                    case EventType.Mousebuttondown or EventType.Mousebuttonup: MouseButton(e.Button, console); break;
                     case EventType.Dropfile: DropFile(e.Drop.File, interpreter, console); break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         console.ReleaseAllKeys();
+                        _mouseButtons = 0;
                         joystick = 0;
                         break;
                 }
@@ -273,6 +276,30 @@ static unsafe class SdlHost
         }
         if (KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) console.SetKey(k, false);
+    }
+
+    // ---------- the mouse is a paddle ----------
+    // Its position is the paddle on the port the numpad drives (POTX/POTY at $D419/$D41A once $DC00 bits 7-6 select that port);
+    // the left button is fire A and the right button fire B (the joystick's left and right bits). It has its own input source,
+    // so it never disturbs the keyboard or a game controller.
+    const int MouseSource = 6;
+    static byte _mouseButtons;
+
+    static void MouseMoved(Window* window, int x, int y, ScreenConsole console)
+    {
+        int width, height;
+        Sdl.GetWindowSize(window, &width, &height);
+        if (width <= 0 || height <= 0) return;
+        console.SetPaddle(_keyboardPort, 0, x * 255 / width);
+        console.SetPaddle(_keyboardPort, 1, y * 255 / height);
+    }
+
+    static void MouseButton(MouseButtonEvent button, ScreenConsole console)
+    {
+        byte bit = button.Button == 1 ? (byte)JoystickMapping.Left : button.Button == 3 ? (byte)JoystickMapping.Right : (byte)0;
+        if (bit == 0) return;
+        if (button.State != 0) _mouseButtons |= bit; else _mouseButtons &= (byte)~bit;
+        console.SetJoystick(_keyboardPort, _mouseButtons, MouseSource);
     }
 
     static void TextInput(TextInputEvent text, ScreenConsole console)

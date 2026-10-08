@@ -56,6 +56,9 @@ public sealed class Sid : IMemoryMapped
     int _filterCutoff, _filterControl, _modeVolume;
     double _low, _band;
 
+    /// <summary>Supplies the paddle position (0-255) on the POTX (0) or POTY (1) line of the selected game port.</summary>
+    public Func<int, int>? Pot { get; set; }
+
     public byte Read(int address)
     {
         lock (_gate)
@@ -64,7 +67,9 @@ public sealed class Sid : IMemoryMapped
             {
                 0x1B => (byte)(_voice[2].Output >> 4),
                 0x1C => (byte)_voice[2].Level,
-                _ => 0, // the registers are write-only; paddles read 0
+                0x19 => (byte)(Pot?.Invoke(0) ?? 0),
+                0x1A => (byte)(Pot?.Invoke(1) ?? 0),
+                _ => 0, // the other registers are write-only
             };
         }
     }

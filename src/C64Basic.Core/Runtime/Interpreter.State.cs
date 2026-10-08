@@ -17,7 +17,7 @@ public readonly record struct StateLoadResult(bool WasRunning, bool NeedsContinu
 public sealed partial class Interpreter
 {
     const string StateMagic = "C64BAS";
-    const int StateVersion = 1;
+    const int StateVersion = 2;   // 2 adds the CIA timer outputs, shift register and CNT level; version 1 files still load
 
     readonly ConcurrentQueue<Action> _safePoints = new();
     readonly Dictionary<string, int> _fnSites = new(); // where each DEF FN ran: an index into the program
@@ -109,7 +109,7 @@ public sealed partial class Interpreter
         if (data.Length < StateMagic.Length + 4 || Encoding.ASCII.GetString(r.ReadBytes(StateMagic.Length)) != StateMagic)
             throw new InvalidDataException("not a saved machine state");
         int version = r.ReadInt32();
-        if (version != StateVersion) throw new InvalidDataException($"unsupported state version {version}");
+        if (version is < 1 or > StateVersion) throw new InvalidDataException($"unsupported state version {version}");
 
         bool wasRunning = r.ReadBoolean();
         int curLine = r.ReadInt32(), curStmt = r.ReadInt32();
@@ -148,7 +148,7 @@ public sealed partial class Interpreter
 
         // read the machine part into a scratch machine first: if the file is damaged this throws before anything has changed
         long machineStart = ms.Position;
-        new Machine.Bus().LoadState(r);
+        new Machine.Bus().LoadState(r, version);
         ms.Position = machineStart;
 
         // ---- apply ----
@@ -184,7 +184,7 @@ public sealed partial class Interpreter
         _chrinPos = 0;
         ProgramChanged();
 
-        _bus.LoadState(r);
+        _bus.LoadState(r, version);
 
         // where execution goes next
         bool atPrompt = !_executing || _curLine < 0;

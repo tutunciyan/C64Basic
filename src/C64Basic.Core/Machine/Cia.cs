@@ -13,6 +13,12 @@ public interface IInputDevice
     /// <summary>Joystick state for port 1 or 2: bit 0 up, 1 down, 2 left, 3 right, 4 fire; a set bit means pressed.</summary>
     byte Joystick(int port);
 
+    /// <summary>
+    /// A paddle on game port 1 or 2: <paramref name="axis"/> 0 is the one the SID reads at $D419 (POTX), 1 the one at $D41A (POTY).
+    /// 0-255, larger = turned further clockwise. The fire buttons are the joystick's left and right bits.
+    /// </summary>
+    byte Paddle(int port, int axis) => 0;
+
     /// <summary>True while the RESTORE key is held: it pulls the NMI line, and with RUN/STOP it is the warm start.</summary>
     bool Restore => false;
 }
@@ -21,8 +27,7 @@ public interface IInputDevice
 /// A 6526 Complex Interface Adapter: two 8-bit ports, two 16-bit timers, a time-of-day clock and an interrupt
 /// register, mirrored every 16 bytes through its 256-byte window. Timers advance lazily from the bus clock when
 /// a register is touched. The timers can drive PB6/PB7 (pulse or toggle), the shift register sends bytes on timer A and
-/// takes them from the host, and the time of day raises its alarm interrupt. Not modelled: CNT pin counting, the FLAG
-/// line edge detection is left to the subclasses.
+/// takes them from the host, and the time of day raises its alarm interrupt. The host can pulse the CNT pin for the timers.
 /// </summary>
 public class Cia : IMemoryMapped
 {
@@ -76,6 +81,9 @@ public class Cia : IMemoryMapped
     protected byte DrivenLowA => (byte)(~Pra & Ddra);
     protected byte DrivenLowB => (byte)(~Prb & Ddrb);
 
+    /// <summary>What the CPU side drives on port A: output bits as written, input bits high.</summary>
+    public byte PortAOutput => (byte)(Pra & Ddra | ~Ddra);
+
     public int TimerA => Peek(_a);
     public int TimerB => Peek(_b);
 
@@ -100,9 +108,34 @@ public class Cia : IMemoryMapped
             {
                 case 0: Advance(_b, delta, 2); break;
                 case 2: if (aUnderflows > 0) Advance(_b, aUnderflows, 2); break;
+                case 3: if (aUnderflows > 0 && CntHigh) Advance(_b, aUnderflows, 2); break;   // A underflows counted while CNT is high
             }
         }
         CheckAlarm();
+    }
+
+    // ---------- the CNT pin ----------
+    /// <summary>The level of the CNT pin: timer B can count A's underflows only while it is high (CRB bits 6-5 = 11).</summary>
+    public bool CntHigh { get; set; } = true;
+
+    /// <summary>
+    /// A rising edge on CNT from the host (the user port). Timer A counts it when its CRA bit 5 is set, timer B when CRB bits
+    /// 6-5 are 01, and the shift register in input mode would clock a bit in (see <see cref="ReceiveSerial"/>).
+    /// </summary>
+    public void PulseCnt(int pulses = 1)
+    {
+        if (pulses <= 0) return;
+        Sync();
+        long aUnderflows = 0;
+        if (_a.Running && (_a.Control & 0x20) != 0) aUnderflows = Advance(_a, pulses, 1);
+        if (aUnderflows > 0) ShiftOut(aUnderflows);
+        if (!_b.Running) return;
+        switch (_b.Control >> 5 & 3)
+        {
+            case 1: Advance(_b, pulses, 2); break;
+            case 2: if (aUnderflows > 0) Advance(_b, aUnderflows, 2); break;
+            case 3: if (aUnderflows > 0 && CntHigh) Advance(_b, aUnderflows, 2); break;
+        }
     }
 
     // ---------- timer outputs on PB6 / PB7 ----------
@@ -317,9 +350,13 @@ public class Cia : IMemoryMapped
         w.Write(TodSeconds10());
         w.Write(_todStopped);
         w.Write(_alarm);
+        // state version 2: the timer outputs, the shift register and the CNT level
+        w.Write(_a.Toggle); w.Write(_b.Toggle);
+        w.Write(_shifting); w.Write(_shiftUnderflows);
+        w.Write(CntHigh);
     }
 
-    internal void LoadState(BinaryReader r)
+    internal void LoadState(BinaryReader r, int version = 2)
     {
         Pra = r.ReadByte(); Prb = r.ReadByte(); Ddra = r.ReadByte(); Ddrb = r.ReadByte();
         _sdr = r.ReadByte(); _flags = r.ReadByte(); _mask = r.ReadByte();
@@ -327,6 +364,14 @@ public class Cia : IMemoryMapped
         _todBase = r.ReadInt32() / 10.0;
         _todStopped = r.ReadBoolean();
         Bus.ReadExact(r, 4).CopyTo(_alarm, 0);
+        if (version >= 2)
+        {
+            _a.Toggle = r.ReadBoolean(); _b.Toggle = r.ReadBoolean();
+            _shifting = r.ReadBoolean(); _shiftUnderflows = r.ReadInt32();
+            CntHigh = r.ReadBoolean();
+        }
+        else { _a.Toggle = _b.Toggle = false; _shifting = false; _shiftUnderflows = 0; CntHigh = true; }
+        _a.LastUnderflow = _b.LastUnderflow = long.MinValue / 2;
         _todAt = Bus.Seconds();   // the clocks run on from now
         _todLatched = false;
         _todChecked = -1;

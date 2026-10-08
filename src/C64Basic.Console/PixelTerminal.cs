@@ -141,6 +141,7 @@ sealed class PixelTerminal
             try
             {
                 // polling instead of a blocking ReadKey: a thread stuck inside the console can keep the process from exiting
+                ReleaseDue();
                 if (!System.Console.KeyAvailable) { Thread.Sleep(8); continue; }
                 key = System.Console.ReadKey(true);
             }
@@ -153,7 +154,42 @@ sealed class PixelTerminal
     {
         string? text = ConsoleKeyMap.Translate(key, out bool quit, out bool stop);
         if (quit) { _screen.Close(); return; }
-        if (stop) { _screen.BreakRequested = true; return; }
-        if (text != null) _screen.Inject(text); // no ten-key limit: a terminal paste arrives as fast typing
+        if (stop) { _screen.BreakRequested = true; Hold(new[] { 63 }); return; }
+        if (text == null) return;
+        _screen.Inject(text); // no ten-key limit: a terminal paste arrives as fast typing
+        foreach (char c in text) Press(c);
+    }
+
+    // ---------- the key matrix ----------
+    // A terminal reports a key press but never its release, so each key is held on the matrix for a short while: long enough
+    // for machine code scanning $DC00/$DC01 (or PEEK 197) to see it.
+    const int HoldMilliseconds = 90;
+
+    readonly Dictionary<int, long> _held = new();
+
+    void Press(char c)
+    {
+        if (KeyboardLayout.KeysFor(c) is { } keys) Hold(keys);
+    }
+
+    void Hold(int[] keys)
+    {
+        long until = Environment.TickCount64 + HoldMilliseconds;
+        lock (_held)
+            foreach (int key in keys) { _screen.SetKey(key, true); _held[key] = until; }
+    }
+
+    void ReleaseDue()
+    {
+        lock (_held)
+        {
+            if (_held.Count == 0) return;
+            long now = Environment.TickCount64;
+            foreach (int key in _held.Where(h => h.Value <= now).Select(h => h.Key).ToList())
+            {
+                _screen.SetKey(key, false);
+                _held.Remove(key);
+            }
+        }
     }
 }

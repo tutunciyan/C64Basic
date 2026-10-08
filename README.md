@@ -17,7 +17,7 @@ Press Ctrl+C to act as RUN/STOP.
 
 | Path | Contents |
 |---|---|
-| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Repl` |
+| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II registers, colour RAM), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
 | `samples/` | example programs |
@@ -71,7 +71,7 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 
 Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` raises `?ILLEGAL QUANTITY`.
 Relative and program files, disk commands such as scratch, sprites, sound, and any `POKE`/`PEEK` hardware
-registers not listed above are missing. `PEEK` of screen RAM returns what was `POKE`d, not printed text. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
+registers not listed above are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
 
 Known deviation: a `FOR` loop's resume point is a statement index, which is exact for all cases including
 `GOSUB` inside an `IF` clause, but a variable named like an extension keyword (`ELSE`, `FIND`, `AUTO`, ...) is

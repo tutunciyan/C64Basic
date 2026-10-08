@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using C64Basic.Core.Machine;
 using C64Basic.Core.Runtime;
 
 namespace C64Basic.Console;
@@ -38,7 +39,10 @@ sealed class C64Screen
     readonly StringBuilder _out = new();
     int _cx, _cy;
     bool _rvs;
-    int _fg = 14, _bg = 6, _border = 14;
+    int _fg = 14;
+    Bus? _bus;
+    int _bg => _bus?.Vic.Background ?? 6;
+    int _border => _bus?.Vic.Border ?? 14;
     int _ox, _oy, _bx, _by;    // terminal position of cell (0,0) and border thickness
     int _lastFg = -1, _lastBg = -1;
 
@@ -211,6 +215,7 @@ sealed class C64Screen
                     break;
             }
         }
+        SyncRam();
         Flush();
     }
 
@@ -267,33 +272,61 @@ sealed class C64Screen
         RepaintAll();
     }
 
-    // ---------- POKE ----------
+    // ---------- bus ----------
+    /// <summary>Connects the screen to the memory map: POKEs reach it, and what it shows is mirrored into RAM.</summary>
+    public void Attach(Bus bus)
+    {
+        _bus = bus;
+        bus.Written += OnWritten;
+        SyncRam();
+        RepaintAll();
+        Flush();
+    }
+
+    /// <summary>Copies screen codes, colours, the cursor and the text colour into bus RAM so PEEK sees them.</summary>
+    void SyncRam()
+    {
+        if (_bus == null) return;
+        for (int r = 0; r < Rows; r++)
+        {
+            Array.Copy(_code, r * _cols, _bus.Ram, ScreenRam + r * PokeCols, PokeCols);
+            Array.Copy(_color, r * _cols, _bus.Color.Data, r * PokeCols, PokeCols);
+        }
+        _bus.Ram[214] = (byte)_cy;
+        _bus.Ram[211] = (byte)Math.Min(_cx, 255);
+        _bus.Ram[646] = (byte)_fg;
+    }
+
     /// <summary>Maps an offset in the 40-column RAM grid to a cell of the (possibly wider) display.</summary>
     int Cell(int offset) => offset / PokeCols * _cols + offset % PokeCols;
 
-    public void Poke(int address, int value)
+    void OnWritten(int address, byte value, bool io)
     {
         if (address >= ScreenRam && address < ScreenRam + Rows * PokeCols)
         {
             int idx = Cell(address - ScreenRam);
-            _code[idx] = (byte)value;
+            _code[idx] = value;
             PaintCell(idx);
         }
-        else if (address >= ColorRam && address < ColorRam + Rows * PokeCols)
+        else if (io && address >= ColorRam && address < ColorRam + Rows * PokeCols)
         {
             int idx = Cell(address - ColorRam);
             _color[idx] = (byte)(value & 15);
             PaintCell(idx);
         }
+        else if (io && address >= 0xD000 && address < 0xD400)
+        {
+            int reg = Vic2.RegisterOf(address);
+            if (reg != Vic2.BorderRegister && reg != Vic2.BackgroundRegister) return;
+            RepaintAll();
+        }
         else
         {
             switch (address)
             {
-                case 214: _cy = Math.Min(value, Rows - 1); break;
-                case 211: _cx = Math.Min(value, _cols - 1); break;
+                case 214: _cy = Math.Min((int)value, Rows - 1); break;
+                case 211: _cx = Math.Min((int)value, _cols - 1); break;
                 case 646: _fg = value & 15; break;
-                case 53280: _border = value & 15; RepaintAll(); break;
-                case 53281: _bg = value & 15; RepaintAll(); break;
                 default: return;
             }
         }

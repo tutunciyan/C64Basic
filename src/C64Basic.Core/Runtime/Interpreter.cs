@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using C64Basic.Core.IO;
 using C64Basic.Core.Lexing;
+using C64Basic.Core.Machine;
 using C64Basic.Core.Parsing;
 
 namespace C64Basic.Core.Runtime;
@@ -53,24 +54,12 @@ public sealed partial class Interpreter
     Dictionary<string, (string Param, Expr Body)> _fns = new();
     readonly List<ForFrame> _forStack = new();
     readonly List<(int Line, int Stmt)> _gosubStack = new();
-    readonly byte[] _mem = InitialMemory();
+    readonly Bus _bus = new();
 
-    static byte[] InitialMemory()
-    {
-        var mem = new byte[65536];
-        mem[0] = 0x2F;      // CPU port direction
-        mem[1] = 0x37;      // BASIC, KERNAL and I/O visible
-        mem[56334] = 0x81;  // CIA 1 control register A
-        return mem;
-    }
+    /// <summary>The memory map PEEK and POKE go through; front ends watch it for hardware writes.</summary>
+    public Bus Bus => _bus;
 
-    /// <summary>PEEK, including the character ROM that replaces I/O at 53248-57343 when bit 2 of address 1 is clear.</summary>
-    int Peek(int address)
-    {
-        if (address >= CharRom.Start && address < CharRom.Start + CharRom.Length && (_mem[1] & 4) == 0 && (_mem[1] & 3) != 0)
-            return CharRom.Read(address);
-        return _mem[address];
-    }
+    int Peek(int address) => _bus.Read(address);
     readonly Stopwatch _clock = Stopwatch.StartNew();
     double _clockOffsetSeconds;
     Random _rng = new();
@@ -101,6 +90,7 @@ public sealed partial class Interpreter
         _fs = fileSystem;
         _opts = options ?? new InterpreterOptions();
         _lexer = new Lexer(_opts.Strict);
+        _dev.Attach(_bus);
     }
 
     public bool Strict => _opts.Strict;
@@ -403,9 +393,8 @@ public sealed partial class Interpreter
                 {
                     int addr = ToInt(Eval(p.Address), 0, 65535);
                     int val = ToInt(Eval(p.Value), 0, 255);
-                    _mem[addr] = (byte)val;
+                    _bus.Write(addr, (byte)val);
                     if (addr == 211) Col = Math.Min(val, 79);
-                    _dev.Poke(addr, val);
                     break;
                 }
             case GetFileStmt gf: DoGetFile(gf); break;

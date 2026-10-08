@@ -1,3 +1,5 @@
+using C64Basic.Core.Machine;
+
 namespace C64Basic.Core.IO;
 
 /// <summary>The "screen and keyboard" the interpreter talks to.</summary>
@@ -15,8 +17,12 @@ public interface IConsoleDevice
     /// <summary>Set by the host when the user presses RUN/STOP (Ctrl+C).</summary>
     bool BreakRequested { get; set; }
 
-    /// <summary>Called after every POKE so the host can react to special addresses.</summary>
-    void Poke(int address, int value) { }
+    /// <summary>
+    /// Called once when the interpreter is created. A host that shows the screen subscribes to
+    /// <see cref="Bus.Written"/> to react to POKEs and keeps screen RAM, colour RAM and the cursor
+    /// variables on the bus up to date, so PEEK sees what was printed.
+    /// </summary>
+    void Attach(Bus bus) { }
 }
 
 /// <summary>Where LOAD, SAVE, VERIFY and OPEN read and write files.</summary>

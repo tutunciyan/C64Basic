@@ -220,7 +220,7 @@ public sealed partial class Interpreter
         {
             string k = _pendingKey;
             _pendingKey = "";
-            _mem[198] = 0;
+            _bus.Ram[198] = 0;
             return k;
         }
         return _dev.GetKey();
@@ -237,9 +237,9 @@ public sealed partial class Interpreter
             if (addr == 198 && _pendingKey.Length == 0)
             {
                 string k = _dev.GetKey();
-                if (k.Length > 0) { _pendingKey = k; _mem[198] = 1; }
+                if (k.Length > 0) { _pendingKey = k; _bus.Ram[198] = 1; }
             }
-            if (((_mem[addr] ^ xor) & mask) != 0) return;
+            if (((Peek(addr) ^ xor) & mask) != 0) return;
             if (_dev.BreakRequested)
             {
                 _curStmt--; // CONT retries the WAIT
@@ -258,7 +258,7 @@ public sealed partial class Interpreter
                 Write("\u0093");
                 break;
             case 65490: // CHROUT: print the character in A (POKE 780)
-                Write(((char)_mem[780]).ToString());
+                Write(((char)_bus.Ram[780]).ToString());
                 break;
             case 64738: // reset
                 _lines.Clear();

@@ -1,5 +1,6 @@
 using System.Text;
 using C64Basic.Core.IO;
+using C64Basic.Core.Machine;
 using C64Basic.Core.Runtime;
 
 namespace C64Basic.Console;
@@ -59,7 +60,7 @@ sealed class ConsoleDevice : IConsoleDevice
         return System.Console.KeyAvailable ? System.Console.ReadKey(true).KeyChar.ToString() : "";
     }
 
-    public void Poke(int address, int value) => _screen?.Poke(address, value);
+    public void Attach(Bus bus) => _screen?.Attach(bus);
 
     public void Restore() => _screen?.Close();
 }

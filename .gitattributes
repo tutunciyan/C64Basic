@@ -1,0 +1,6 @@
+* text=auto
+*.png binary
+*.bmp binary
+*.d64 binary
+*.t64 binary
+*.prg binary

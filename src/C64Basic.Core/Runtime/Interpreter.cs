@@ -103,6 +103,7 @@ public sealed partial class Interpreter
         _opts = options ?? new InterpreterOptions();
         _lexer = new Lexer(_opts.Strict);
         _dev.Attach(_bus);
+        _dev.WhileWaiting = RunPendingRequests;
     }
 
     public bool Strict => _opts.Strict;
@@ -252,8 +253,20 @@ public sealed partial class Interpreter
     void Execute()
     {
         _halted = false;
+        bool wasExecuting = _executing;
+        _executing = true;
+        try { ExecuteStatements(); }
+        finally { _executing = wasExecuting; }
+    }
+
+    void ExecuteStatements()
+    {
         while (!_halted)
         {
+            // another thread asked for a state save or load: do it between statements of a program (not inside a direct command)
+            if (_curLine >= 0 && !_safePoints.IsEmpty) RunPendingRequests();
+            if (_halted) break;
+
             if (_dev.BreakRequested)
             {
                 _dev.BreakRequested = false;
@@ -421,6 +434,7 @@ public sealed partial class Interpreter
             case DefFnStmt d:
                 if (_curLine < 0) throw new BasicException(ErrorCode.IllegalDirect);
                 _fns[d.Key] = (d.ParamKey, d.Body);
+                _fnSites[d.Key] = _curLine;
                 break;
             case PokeStmt p:
                 {

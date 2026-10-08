@@ -93,6 +93,39 @@ public sealed class Bus
     /// <summary>A byte of the I/O area as stored for addresses without a chip (the VIC bank bits come from CIA 2 through this).</summary>
     public byte IoByte(int address) => _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
 
+    /// <summary>Writes the whole machine: RAM, colour RAM, unmapped I/O storage and the VIC-II, SID and both CIAs.</summary>
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(Ram);
+        w.Write(Color.Data);
+        w.Write(_io);
+        Vic.SaveState(w);
+        Sound.SaveState(w);
+        Cia1.SaveState(w);
+        Cia2.SaveState(w);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        ReadInto(r, Ram);
+        ReadInto(r, Color.Data);
+        ReadInto(r, _io);
+        Vic.LoadState(r);
+        Sound.LoadState(r);
+        Cia1.LoadState(r);
+        Cia2.LoadState(r);
+    }
+
+    static void ReadInto(BinaryReader r, byte[] target) => ReadExact(r, target.Length).CopyTo(target, 0);
+
+    /// <summary>Reads exactly <paramref name="count"/> bytes (BinaryReader.ReadBytes silently returns fewer at the end of a stream).</summary>
+    internal static byte[] ReadExact(BinaryReader r, int count)
+    {
+        var data = r.ReadBytes(count);
+        if (data.Length != count) throw new EndOfStreamException();
+        return data;
+    }
+
     public void Map(int start, int length, IMemoryMapped chip)
     {
         for (int a = start; a < start + length; a++) _chips[a - IoStart] = chip;

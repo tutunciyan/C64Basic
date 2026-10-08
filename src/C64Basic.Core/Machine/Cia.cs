@@ -233,6 +233,31 @@ public class Cia : IMemoryMapped
         t.Control = value & ~0x10;
     }
 
+    // ---------- saved state ----------
+    internal void SaveState(BinaryWriter w)
+    {
+        Sync();
+        w.Write(Pra); w.Write(Prb); w.Write(Ddra); w.Write(Ddrb);
+        w.Write(_sdr); w.Write(_flags); w.Write(_mask);
+        foreach (var t in new[] { _a, _b }) { w.Write(t.Latch); w.Write(t.Counter); w.Write(t.Control); }
+        w.Write(TodSeconds10());
+        w.Write(_todStopped);
+        w.Write(_alarm);
+    }
+
+    internal void LoadState(BinaryReader r)
+    {
+        Pra = r.ReadByte(); Prb = r.ReadByte(); Ddra = r.ReadByte(); Ddrb = r.ReadByte();
+        _sdr = r.ReadByte(); _flags = r.ReadByte(); _mask = r.ReadByte();
+        foreach (var t in new[] { _a, _b }) { t.Latch = r.ReadInt32(); t.Counter = r.ReadInt32(); t.Control = r.ReadInt32(); }
+        _todBase = r.ReadInt32() / 10.0;
+        _todStopped = r.ReadBoolean();
+        Bus.ReadExact(r, 4).CopyTo(_alarm, 0);
+        _todAt = Bus.Seconds();   // the clocks run on from now
+        _todLatched = false;
+        _lastCycle = Now();
+    }
+
     /// <summary>Power-on state the KERNAL leaves behind; subclasses refine it.</summary>
     protected void SetDefaults(int timerALatch, bool startTimerA, byte mask)
     {

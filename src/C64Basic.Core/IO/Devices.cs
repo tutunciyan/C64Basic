@@ -23,6 +23,12 @@ public interface IConsoleDevice
     /// variables on the bus up to date, so PEEK sees what was printed.
     /// </summary>
     void Attach(Bus bus) { }
+
+    /// <summary>
+    /// The interpreter sets this to a routine it wants run now and then while it waits for the user to type: a safe moment to
+    /// save or load the machine state. A device that waits in a loop calls it each time round.
+    /// </summary>
+    Action? WhileWaiting { get => null; set { } }
 }
 
 /// <summary>Shows the picture the VIC-II draws. The host calls <c>bus.Vic.Render</c> once per frame and passes it on.</summary>

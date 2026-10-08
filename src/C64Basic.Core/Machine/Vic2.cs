@@ -142,6 +142,21 @@ public sealed partial class Vic2 : IMemoryMapped
 
     internal byte Reg(int r) => _reg[r];
 
+    internal void SaveState(BinaryWriter w)
+    {
+        w.Write(_reg);
+        w.Write(_rasterCompare);
+        w.Write(_spriteSprite); w.Write(_spriteBackground);
+    }
+
+    internal void LoadState(BinaryReader r)
+    {
+        Machine.Bus.ReadExact(r, RegisterCount).CopyTo(_reg, 0);
+        _rasterCompare = r.ReadInt32();
+        _spriteSprite = r.ReadByte(); _spriteBackground = r.ReadByte();
+        _lastRaster = Raster;
+    }
+
     /// <summary>
     /// A byte as the VIC sees memory: 14-bit address inside the bank chosen by CIA 2, with the character
     /// ROM shown at 4096-8191 of banks 0 and 2.

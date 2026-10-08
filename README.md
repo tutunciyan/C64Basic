@@ -158,6 +158,13 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
   while the window is open.
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
+- Machine state: Ctrl+S saves the whole machine (memory, VIC-II, SID and CIA registers, the BASIC program, variables, arrays, `DEF FN`
+  functions, FOR/GOSUB stacks, the DATA pointer and the clock) to `c64-state.sav` (`--state <file>` changes the name) and Ctrl+L loads
+  it; `--resume` loads it at startup and dropping a `.sav` file on the window loads that. A program that was running carries on
+  (the window types `CONT` for it). Saving happens between BASIC statements or at the prompt, so it waits while a `SYS` routine runs.
+  Open files are closed by a load, and the drives and the character ROM are configuration that stays as it is.
+  In code: `Interpreter.SaveState()` / `LoadState(bytes)`, or `SaveStateLater` / `LoadStateLater` from another thread. A damaged file
+  is refused without changing anything.
 - Clipboard: Ctrl+V or Shift+Insert types the clipboard (line breaks become RETURN; characters the C64 keyboard cannot produce are
   dropped; at most 64 KB), so a BASIC listing can be pasted in. Ctrl+C copies the screen as text.
 - Character sets: the real ROM is copyrighted, so the built-in set is drawn in this project (C64-style letters and digits,

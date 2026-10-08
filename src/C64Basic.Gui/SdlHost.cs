@@ -20,6 +20,13 @@ static unsafe class SdlHost
     /// <summary>The joystick port the numpad drives; the Pause key switches it between 1 and 2.</summary>
     static int _keyboardPort = 2;
 
+    /// <summary>The file Ctrl+S and Ctrl+L use for the machine state.</summary>
+    static string _stateFile = "c64-state.sav";
+
+    /// <summary>A message from the interpreter thread for the title bar (SDL calls stay on the main thread).</summary>
+    static volatile string? _statusMessage;
+    static long _statusUntil;
+
     /// <summary>
     /// Silk.NET looks for SDL2 by bare name, which does not reach the copy in <c>runtimes/&lt;rid&gt;/native</c> that a
     /// plain build leaves on Linux and macOS (a published folder has it next to the executable). So the bundled library is
@@ -42,10 +49,13 @@ static unsafe class SdlHost
         return Sdl.GetApi(); // fall back to the system's SDL2
     }
 
-    public static int Run(Interpreter interpreter, ScreenConsole console, System.Threading.Thread worker, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2)
+    public static int Run(Interpreter interpreter, ScreenConsole console, System.Threading.Thread worker, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2, string? stateFile = null, bool resume = false)
     {
         _bus = interpreter.Bus;
         _keyboardPort = keyboardPort;
+        if (stateFile != null) _stateFile = stateFile;
+        _interpreterForState = interpreter;
+        _consoleForState = console;
 
         if (Sdl.Init(Sdl.InitVideo | Sdl.InitAudio | Sdl.InitEvents | Sdl.InitGamecontroller) != 0)
         {
@@ -70,6 +80,7 @@ static unsafe class SdlHost
         var gamepads = new Gamepads(Sdl, console);
         gamepads.OpenAll();
         worker.Start();
+        if (resume) LoadState();
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         var joystick = (byte)0;
@@ -100,6 +111,18 @@ static unsafe class SdlHost
                         joystick = 0;
                         break;
                 }
+            }
+
+            if (_statusMessage is { } message)
+            {
+                _statusMessage = null;
+                _statusUntil = Environment.TickCount64 + 3000;
+                Sdl.SetWindowTitle(window, "C64 BASIC - " + message);
+            }
+            else if (_statusUntil != 0 && Environment.TickCount64 > _statusUntil)
+            {
+                _statusUntil = 0;
+                Sdl.SetWindowTitle(window, interpreter.Warp ? "C64 BASIC (warp)" : "C64 BASIC");
             }
 
             _bus.Vic.Render(frame);
@@ -197,6 +220,10 @@ static unsafe class SdlHost
                 return true;
         }
 
+        // machine state: Ctrl+S saves, Ctrl+L loads
+        if (!repeat && control && code == Scancode.ScancodeS) { SaveState(); return true; }
+        if (!repeat && control && code == Scancode.ScancodeL) { LoadState(); return true; }
+
         // clipboard: Ctrl+V or Shift+Insert types the text, Ctrl+C copies the screen
         if (!repeat && ((control && code == Scancode.ScancodeV) || (shift && code == Scancode.ScancodeInsert)))
         {
@@ -260,6 +287,38 @@ static unsafe class SdlHost
         }
     }
 
+    // ---------- machine state ----------
+    static Interpreter _interpreterForState = null!;
+    static ScreenConsole _consoleForState = null!;
+
+    static void SaveState()
+    {
+        string file = _stateFile;
+        _interpreterForState.SaveStateLater(bytes =>
+        {
+            try { File.WriteAllBytes(file, bytes); _statusMessage = $"state saved ({Path.GetFileName(file)})"; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { _statusMessage = "could not save: " + e.Message; }
+        });
+    }
+
+    static void LoadState()
+    {
+        byte[] data;
+        try { data = File.ReadAllBytes(_stateFile); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _statusMessage = "no saved state (" + Path.GetFileName(_stateFile) + ")";
+            return;
+        }
+        _interpreterForState.LoadStateLater(data, (result, error) =>
+        {
+            if (error != null) { _statusMessage = "could not load: " + error.Message; return; }
+            _statusMessage = "state loaded";
+            // a program that was running when saved carries on: the prompt is waiting, so type CONT for it
+            if (result is { NeedsContinue: true }) _consoleForState.Inject("CONT" + (char)13);
+        });
+    }
+
     // ---------- window ----------
     static void ToggleFullscreen(Window* window)
     {
@@ -302,6 +361,10 @@ static unsafe class SdlHost
                         console.Inject(basic ? $"LOAD\"{path}\"\rRUN\r" : $"LOAD\"{path}\",8,1\r");
                         break;
                     }
+                case ".sav":
+                    File.Copy(path, _stateFile, overwrite: true);
+                    LoadState();
+                    break;
                 case ".bas":
                     console.Inject($"LOAD\"{path}\"\rRUN\r");
                     break;

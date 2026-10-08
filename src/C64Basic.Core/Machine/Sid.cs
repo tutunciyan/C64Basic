@@ -88,6 +88,38 @@ public sealed class Sid : IMemoryMapped
         }
     }
 
+    /// <summary>The registers; oscillator phase and envelopes start over, which is inaudible after a pause.</summary>
+    internal void SaveState(BinaryWriter w)
+    {
+        lock (_gate)
+        {
+            foreach (var v in _voice)
+            {
+                w.Write(v.Frequency); w.Write(v.PulseWidth); w.Write(v.Control); w.Write(v.AttackDecay); w.Write(v.SustainRelease);
+            }
+            w.Write(_filterCutoff); w.Write(_filterControl); w.Write(_modeVolume);
+        }
+    }
+
+    internal void LoadState(BinaryReader r)
+    {
+        lock (_gate)
+        {
+            foreach (var v in _voice)
+            {
+                v.Frequency = r.ReadInt32(); v.PulseWidth = r.ReadInt32(); v.Control = r.ReadInt32();
+                v.AttackDecay = r.ReadInt32(); v.SustainRelease = r.ReadInt32();
+                v.Phase = 0;
+                v.EnvCycles = 0;
+                // a held note carries on at its sustain level instead of attacking again
+                v.Stage = v.Gate ? Stage.Sustain : Stage.Release;
+                v.Level = v.Gate ? (v.SustainRelease >> 4) * 17 : 0;
+            }
+            _filterCutoff = r.ReadInt32(); _filterControl = r.ReadInt32(); _modeVolume = r.ReadInt32();
+            _low = _band = 0;
+        }
+    }
+
     /// <summary>Produces mono 16-bit samples for the current register state, advancing the chip in time.</summary>
     public void Render(Span<short> samples, int sampleRate)
     {

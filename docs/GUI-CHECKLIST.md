@@ -41,6 +41,12 @@ and tick them off. Note the OS and the result.
 - [ ] Copy a short BASIC program from a text editor, press Ctrl+V (and again with Shift+Insert): it is typed line by line and `RUN` works. Tabs and accented characters do not break it.
 - [ ] Ctrl+C after `PRINT "HELLO"` puts the screen text on the clipboard.
 
+## Machine state
+- [ ] Run samples/sprite.bas, press Ctrl+S mid-run (the title says "state saved"), let it finish, press Ctrl+L: the ball is back where it was and keeps bouncing.
+- [ ] Ctrl+S at the prompt, type `NEW` and `POKE 53280,0`, Ctrl+L: the program, the border colour and the screen are back.
+- [ ] `--resume` starts with the saved screen; dropping the `.sav` file on the window loads it too.
+- [ ] Ctrl+L with no file says "no saved state" and changes nothing.
+
 ## Files
 - [ ] `dotnet run --project src/C64Basic.Gui -- --disk test.d64` creates the image; `SAVE "X",8` then `LOAD "$",8`, `LIST` shows it.
 - [ ] Dropping a `.d64` onto the window mounts it and lists the directory; dropping a `.bas` or BASIC `.prg` loads and runs it.

@@ -22,17 +22,21 @@ const string Usage = """
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
+      --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
+      --resume        load the state file at startup
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       -h, --help      show this help
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
           F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp).
-          Drop a .d64, .t64, .prg or .bas file on the window to mount or load it.
+          Drop a .d64, .t64, .tap, .prg, .bas or .sav file on the window to mount or load it.
     """;
 
 bool strict = false, fast = false, fullscreen = false;
 int scale = 3;
 int joyPort = 2;
+string? stateFile = null;
+bool resume = false;
 string? program = null, tape = null, typeText = null, snapshot = null, chargen = null;
 var disks = new List<(int Device, string Path)>();
 
@@ -69,6 +73,11 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
+        case "--state":
+            if (++i >= args.Length) { Console.Error.WriteLine("--state needs a file name"); return 2; }
+            stateFile = args[i];
+            break;
+        case "--resume": resume = true; break;
         case "--chargen":
             if (++i >= args.Length) { Console.Error.WriteLine("--chargen needs a ROM file"); return 2; }
             chargen = args[i];
@@ -124,4 +133,4 @@ var worker = new System.Threading.Thread(() =>
 { IsBackground = true, Name = "C64" };
 
 if (typeText != null) screen.Inject(typeText);
-return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot, joyPort);
+return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot, joyPort, stateFile, resume);

@@ -28,6 +28,8 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
 
     public bool BreakRequested { get; set; }
 
+    public Action? WhileWaiting { get; set; }
+
     /// <summary>True while the interpreter waits for the user to type a line: the cursor blinks only then.</summary>
     public bool CursorVisible => _waiting;
 
@@ -67,6 +69,7 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
             while (true)
             {
                 if (_closed) return null;
+                WhileWaiting?.Invoke();
                 if (!_keys.TryDequeue(out char key))
                 {
                     _keyArrived.Reset();

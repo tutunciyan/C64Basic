@@ -161,7 +161,9 @@ only while `CntHigh` (CRB bits 6-5). Nothing in the front ends drives CNT; it is
 **Paddles:** `IInputDevice.Paddle(port, axis)` is what the SID reads at `$D419`/`$D41A`; CIA 1 port A bits 7-6 pick the game port (`POKE 56320,64` =
 port 1, `128` = port 2, as the C64 documents it; selecting both or neither reads 0). The fire buttons are the joystick's left and right bits
 (`PEEK(56320)` bits 2 and 3). In the GUI the mouse is a paddle on the port the numpad drives: its position is POTX/POTY (0-255 across the
-window), the left button is fire A and the right button fire B.
+window), the left button is fire A and the right button fire B. With `--lightpen` the mouse is a light pen on port 1 instead: holding
+the left button over the picture strikes the pen at that beam position (`Vic.LightPen`: `$D013`/`$D014` and interrupt flag 3) and holds the
+joystick fire line (`PEEK(56321)` bit 4) low.
 
 ## The picture in a terminal (`--pixels`)
 

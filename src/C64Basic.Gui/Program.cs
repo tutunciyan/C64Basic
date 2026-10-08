@@ -22,6 +22,7 @@ const string Usage = """
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
+      --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
@@ -75,6 +76,7 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
+        case "--lightpen": SdlHost.LightPen = true; break;
         case "--sid":
             if (++i >= args.Length || args[i] is not ("6581" or "8580"))
             { Console.Error.WriteLine("--sid needs 6581 or 8580"); return 2; }

@@ -366,3 +366,60 @@ public class StateTests
         Assert.IsType<InvalidDataException>(error);
     }
 }
+
+public class OldStateFileTests
+{
+    /// <summary>Rebuilds what a version 1 file looked like: no CIA extras (8 bytes at the end of each 48-byte CIA block).</summary>
+    static byte[] AsVersion1(Interpreter interp)
+    {
+        var full = interp.SaveState();
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms)) interp.Bus.SaveState(w);
+        var bus = ms.ToArray();
+        int at = full.AsSpan().IndexOf(bus);
+        Assert.True(at > 0);
+
+        const int CiaBlock = 48, Extras = 8;
+        int cia2 = at + bus.Length - CiaBlock, cia1 = cia2 - CiaBlock;
+        var old = new List<byte>(full);
+        old.RemoveRange(cia2 + CiaBlock - Extras, Extras);            // later ranges first, so the offsets stay valid
+        old.RemoveRange(cia1 + CiaBlock - Extras, Extras);
+        var bytes = old.ToArray();
+        BitConverter.GetBytes(1).CopyTo(bytes, 6);                    // the version follows the 6-byte magic
+        return bytes;
+    }
+
+    [Fact]
+    public void AVersion1FileStillLoads()
+    {
+        var a = new Interpreter(new TestConsole(), new MemoryFileSystem());
+        a.Bus.Seconds = () => 0;
+        a.ProcessLine("10 PRINT 42");
+        a.Bus.Write(0xDD04, 0x34); a.Bus.Write(0xDD05, 0x12);        // timer A latch of CIA 2
+        a.Bus.Write(0xD020, 5);
+        var v1 = AsVersion1(a);
+
+        var console = new TestConsole();
+        var b = new Interpreter(console, new MemoryFileSystem());
+        b.Bus.Seconds = () => 0;
+        b.LoadState(v1);
+        b.ProcessLine("RUN");
+        Assert.Contains("42", console.Output);
+        Assert.Equal(5, b.Bus.Read(0xD020) & 15);
+        Assert.Equal(0x1234, b.Bus.Cia2.TimerA);
+        Assert.True(b.Bus.Cia2.CntHigh);                              // the extras start from their defaults
+    }
+
+    [Fact]
+    public void ADamagedVersion1FileIsRefusedWithoutChangingTheMachine()
+    {
+        var a = new Interpreter(new TestConsole(), new MemoryFileSystem());
+        a.Bus.Seconds = () => 0;                                      // a still clock: two saves must match byte for byte
+        a.ProcessLine("10 PRINT 1");
+        var v1 = AsVersion1(a);
+        var b = new Interpreter(new TestConsole(), new MemoryFileSystem());
+        b.ProcessLine("10 PRINT 2");
+        Assert.ThrowsAny<Exception>(() => b.LoadState(v1[..(v1.Length - 20)]));
+        Assert.Contains("PRINT 2", string.Join("\n", b.Listing()));
+    }
+}

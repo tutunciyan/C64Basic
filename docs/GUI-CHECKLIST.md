@@ -34,6 +34,8 @@ and tick them off. Note the OS and the result.
 - [ ] `POKE 56320,128:PRINT PEEK(54297)` follows the mouse: 0 at the left edge of the window, about 255 at the right; `PEEK(54298)` follows the vertical position. After `--joy 1` (or the Pause key) use `POKE 56320,64`.
 - [ ] While `POKE 56320,128` is set, holding the left mouse button makes `PEEK(56320) AND 4` read 0 (fire A); the right button clears bit 3. Releasing the window focus releases both.
 
+- [ ] `--lightpen`: hold the left mouse button over the middle of the picture, then `PRINT PEEK(53267),PEEK(53268)` shows roughly 80 and 150 (X in 2-pixel units, raster line); `PEEK(56321) AND 16` reads 0 while the button is down.
+
 ## Graphics and sound
 - [ ] samples/sprite.bas: a yellow ball bounces off all four edges, including past X=255.
 - [ ] samples/sid.bas: a rising C major scale, no clicks or hangs, silent afterwards.

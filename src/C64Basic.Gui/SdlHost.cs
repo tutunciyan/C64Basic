@@ -20,6 +20,9 @@ static unsafe class SdlHost
     /// <summary>The joystick port the numpad drives; the Pause key switches it between 1 and 2.</summary>
     static int _keyboardPort = 2;
 
+    /// <summary>The mouse is a light pen on port 1 instead of a paddle (<c>--lightpen</c>).</summary>
+    public static bool LightPen { get; set; }
+
     /// <summary>The file Ctrl+S and Ctrl+L use for the machine state.</summary>
     static string _stateFile = "c64-state.sav";
 
@@ -128,6 +131,7 @@ static unsafe class SdlHost
                 Sdl.SetWindowTitle(window, interpreter.Warp ? "C64 BASIC (warp)" : "C64 BASIC");
             }
 
+            if (LightPen && _mouseButtons != 0) StrikeLightPen(window);
             _bus.Vic.Render(frame);
             if (snapshot != null && Environment.TickCount64 - startedAt >= 2000)
             {
@@ -285,8 +289,31 @@ static unsafe class SdlHost
     const int MouseSource = 6;
     static byte _mouseButtons;
 
+    static int _mouseX, _mouseY;
+
+    /// <summary>Where a window position is in the picture, as the beam sees it: sprite X (frame x - 8) and the raster line (frame row + 15).</summary>
+    static bool BeamAt(Window* window, out int x, out int line)
+    {
+        int width, height;
+        Sdl.GetWindowSize(window, &width, &height);
+        double scale = Math.Min((double)width / Vic2.FrameWidth, (double)height / Vic2.FrameHeight);
+        double left = (width - Vic2.FrameWidth * scale) / 2, top = (height - Vic2.FrameHeight * scale) / 2;
+        int fx = (int)((_mouseX - left) / scale), fy = (int)((_mouseY - top) / scale);
+        x = fx - 8;
+        line = fy + 15;
+        return scale > 0 && fx >= 0 && fx < Vic2.FrameWidth && fy >= 0 && fy < Vic2.FrameHeight;
+    }
+
+    /// <summary>A light pen strike for the frame being drawn while the button is down: the first one per frame latches.</summary>
+    static void StrikeLightPen(Window* window)
+    {
+        if (BeamAt(window, out int x, out int line)) _bus.Vic.LightPen(x, line);
+    }
+
     static void MouseMoved(Window* window, int x, int y, ScreenConsole console)
     {
+        _mouseX = x; _mouseY = y;
+        if (LightPen) return;
         int width, height;
         Sdl.GetWindowSize(window, &width, &height);
         if (width <= 0 || height <= 0) return;
@@ -296,6 +323,16 @@ static unsafe class SdlHost
 
     static void MouseButton(MouseButtonEvent button, ScreenConsole console)
     {
+        if (LightPen)
+        {
+            // the pen's switch is the joystick fire button on port 1 (it also pulls CIA 1 PB4 low)
+            if (button.Button == 1)
+            {
+                _mouseButtons = (byte)(button.State != 0 ? 1 : 0);
+                console.SetJoystick(1, (byte)(_mouseButtons != 0 ? JoystickMapping.Fire : 0), MouseSource);
+            }
+            return;
+        }
         byte bit = button.Button == 1 ? (byte)JoystickMapping.Left : button.Button == 3 ? (byte)JoystickMapping.Right : (byte)0;
         if (bit == 0) return;
         if (button.State != 0) _mouseButtons |= bit; else _mouseButtons &= (byte)~bit;

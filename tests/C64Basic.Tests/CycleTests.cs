@@ -27,7 +27,8 @@ public class CycleTests
     [Fact]
     public void BadLinesTakeCyclesFromTheProgram()
     {
-        const string count = "E6 FB D0 02 E6 FC AD 12 D0 C9 80 D0 F3 60";
+        // wait for line 100 first so the run starts at the same place whatever the host's speed, then count until line 200
+        const string count = "AD 12 D0 C9 64 D0 F9 E6 FB D0 02 E6 FC AD 12 D0 C9 C8 D0 F3 60";
         int Iterations(bool den)
         {
             var (cpu, bus) = Machine(count);
@@ -42,13 +43,14 @@ public class CycleTests
     [Fact]
     public void SpritesTakeCyclesToo()
     {
-        const string count = "E6 FB D0 02 E6 FC AD 12 D0 C9 80 D0 F3 60";
+        // wait for line 100 first so the run starts at the same place whatever the host's speed, then count until line 200
+        const string count = "AD 12 D0 C9 64 D0 F9 E6 FB D0 02 E6 FC AD 12 D0 C9 C8 D0 F3 60";
         int Iterations(byte sprites)
         {
             var (cpu, bus) = Machine(count);
             bus.Write(0xD011, 0x0B);
             bus.Write(0xD015, sprites);
-            for (int n = 0; n < 8; n++) bus.Write(0xD001 + n * 2, 0);   // all on line 1 onwards
+            for (int n = 0; n < 8; n++) bus.Write(0xD001 + n * 2, 120);  // all on lines 121-141
             cpu.Call(0x200);
             return bus.Ram[0xFB] + 256 * bus.Ram[0xFC];
         }

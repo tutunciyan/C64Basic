@@ -50,6 +50,12 @@ public sealed partial class Vic2 : IMemoryMapped
     /// <summary>The raster line (0-311) the beam is on right now.</summary>
     public int Raster => (int)(Seconds() * FramesPerSecond * RasterLines % RasterLines);
 
+    /// <summary>True while an enabled VIC interrupt source (raster, collisions) has its flag set: the IRQ line.</summary>
+    public bool InterruptPending
+    {
+        get { PollRaster(); return (_reg[IrqFlags] & _reg[IrqEnable] & 0x0F) != 0; }
+    }
+
     /// <summary>The register an address refers to, or -1 for the unused gap at 47-63 of each 64-byte block.</summary>
     public static int RegisterOf(int address)
     {

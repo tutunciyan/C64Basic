@@ -68,7 +68,8 @@ public class FileIoTests
     public void SysClearsScreen() => Assert.Equal("\u0093", Basic.Run("SYS 58692"));
 
     [Fact]
-    public void SysUnknownIsIllegal() => Assert.Equal("?ILLEGAL QUANTITY  ERROR\n", Basic.Run("SYS 49152"));
+    public void SysIntoEmptyRamHitsBrkAndEndsTheProgram() =>
+        Assert.Equal("", Basic.Run("10 SYS 49152:PRINT \"NOT HERE\"", "RUN"));
 
     [Fact]
     public void WaitReturnsWhenConditionAlreadyTrue() =>

@@ -286,7 +286,7 @@ public sealed partial class Interpreter
             case "PEEK": return Value.Num(Peek(ToInt(Eval(f.Args[0]), 0, 65535)));
             case "FRE": N(0); return Value.Num(BasicBytesFree);
             case "POS": N(0); return Value.Num(Col);
-            case "USR": throw new BasicException(ErrorCode.IllegalQuantity);
+            case "USR": return Value.Num(Check(CallUsr(N(0))));
             case "LEN": return Value.Num(S(0).Length);
             case "VAL": return Value.Num(Check(NumberParser.ParsePrefix(S(0))));
             case "STR$": return Value.Str(NumberFormat.Format(N(0)));

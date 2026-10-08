@@ -1,7 +1,7 @@
 # C64Basic
 
 A Commodore 64 **BASIC V2** interpreter written in C# (.NET 10), with a few editing and tooling extensions.
-It interprets the language; it does not emulate a 6502 or the C64 ROM.
+It interprets the language, and `SYS`/`USR` run machine code on a built-in 6502 core. There is no C64 ROM image: KERNAL and BASIC entry points are emulated in C#.
 
 ```
 dotnet run --project src/C64Basic.Console                      # interactive READY. prompt
@@ -17,7 +17,7 @@ Press Ctrl+C to act as RUN/STOP.
 
 | Path | Contents |
 |---|---|
-| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, VIC-II, SID, CIA, colour RAM), `Repl` |
+| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, 6502 CPU, VIC-II, SID, CIA, colour RAM), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
 | `samples/` | example programs |
@@ -56,8 +56,17 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   3 (screen) and 8-11 (disk). Disk files are plain text with CR-separated records, kept in memory until `CLOSE`.
   `OPEN 15,8,15` gives a command channel that always reads back `00, OK,00,00`. Input items end at a comma, colon or CR.
 - `WAIT 198,n` waits for a key (works with a following `GET`); any other `WAIT` polls `PEEK` memory until RUN/STOP.
-- `SYS` supports 58692 (clear screen), 64738 (reset), and 65490 (CHROUT, character in `POKE 780`). Anything else
-  raises `?ILLEGAL QUANTITY`, since there is no 6502.
+- `SYS addr` runs machine code on a 6502 core (all documented opcodes with cycle counts, decimal mode, RMW dummy writes;
+  it passes Klaus Dormann's functional test). A, X, Y and P are loaded from and stored to 780-783, as BASIC does, and
+  the program ends at the first `BRK` (the default KERNAL vector returns to READY). `USR(x)` jumps through the vector at
+  785 with `x` in the floating-point accumulator ($61-$66) and takes the result from it. Undocumented opcodes, and
+  jumps into KERNAL/BASIC ROM addresses without an emulation, raise `?ILLEGAL QUANTITY`.
+- Emulated ROM entry points: CHROUT $FFD2, CHRIN $FFCF, GETIN $FFE4, STOP $FFE1, PLOT $FFF0, READST $FFB7, SETLFS, SETNAM,
+  SCNKEY/CLRCHN/CLALL (no-ops), clear screen $E544, home $E566, reset $FCE2, BASIC warm start $A474/$A483/$E37B (ends
+  the SYS), and the IRQ tail $EA31/$EA7E/$EA81. Interrupts are delivered while machine code runs: the CIA 1 timer and VIC-II
+  raster IRQs go through the RAM vector at 788/789 (or $FFFE/$FFFF once the KERNAL is banked out with `POKE 1`), so
+  raster-interrupt programs work. NMI, LOAD/SAVE/OPEN KERNAL calls and the BASIC ROM's floating-point routines are not
+  emulated. Execution is paced to 985 kHz unless `--fast`; Ctrl+C stops a runaway routine.
 - In a terminal the console front end shows an emulated 40x25 C64 screen with border (true-colour ANSI): PETSCII home,
   cursor keys, reverse and the 16 colour codes, scrolling, and `POKE` to screen RAM (1024), colour RAM (55296),
   cursor row/column (214/211), text colour (646), border (53280) and background (53281). Typed letters show as
@@ -88,7 +97,7 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 
 ## Not implemented
 
-Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` raises `?ILLEGAL QUANTITY`.
+Tape (device 1) and printer (device 4) raise `?DEVICE NOT PRESENT`. `USR` without a vector raises `?ILLEGAL QUANTITY`.
 Relative and program files, disk commands such as scratch, and any `POKE`/`PEEK` hardware
 registers not listed above are missing. `PEEK` of screen RAM, colour RAM and the cursor (214/211) sees printed text only in the emulated screen, not with `--plain`. `LOAD`/`SAVE`/`VERIFY` read and write plain-text `.bas` files rather than tape or disk images.
 

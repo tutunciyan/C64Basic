@@ -31,6 +31,9 @@ public sealed class Bus
     /// <summary>Keys and joysticks, supplied by the host. Without one nothing is pressed and PEEK 197/653 read plain RAM.</summary>
     public IInputDevice? Input { get; set; }
 
+    /// <summary>The CPU's IRQ line: CIA 1 (system timer) or the VIC-II.</summary>
+    public bool IrqLine => Cia1.InterruptPending || Vic.InterruptPending;
+
     readonly Stopwatch _clock = Stopwatch.StartNew();
 
     /// <summary>Seconds since power-on. Raster, CIA timers, time of day and TI all run from it; tests replace it.</summary>
@@ -51,11 +54,27 @@ public sealed class Bus
         Ram[0] = 0x2F;      // CPU port direction
         Ram[1] = 0x37;      // BASIC, KERNAL and I/O visible
         Ram[646] = 14;      // text colour
+        InitialiseZeroPageAndVectors();
         Map(Vic2.Start, Vic2.Length, Vic);
         Map(Sid.Start, Sid.Length, Sound);
         Map(ColorRam.Start, ColorRam.Length, Color);
         Map(Cia1.Start, Cia.Length, Cia1);
         Map(Cia2.Start, Cia.Length, Cia2);
+    }
+
+    /// <summary>The RAM vectors and BASIC pointers the KERNAL leaves after power-on, as machine code expects them.</summary>
+    void InitialiseZeroPageAndVectors()
+    {
+        void Word(int address, int value) { Ram[address] = (byte)value; Ram[address + 1] = (byte)(value >> 8); }
+        Word(43, 0x0801);   // start of BASIC
+        Word(51, 0xA000);   // bottom of strings
+        Word(53, 0xA000);   // top of strings
+        Word(55, 0xA000);   // top of BASIC memory
+        Word(0x314, 0xEA31); // IRQ
+        Word(0x316, 0xFE66); // BRK
+        Word(0x318, 0xFE47); // NMI
+        Ram[785] = 0x4C;    // USR: JMP to "illegal quantity"
+        Word(786, 0xB248);
     }
 
     /// <summary>A byte of the I/O area as stored for addresses without a chip (the VIC bank bits come from CIA 2 through this).</summary>

@@ -226,7 +226,7 @@ public sealed partial class Interpreter
         return _dev.GetKey();
     }
 
-    // ---------- WAIT / SYS ----------
+    // ---------- WAIT ----------
     void DoWait(WaitStmt w)
     {
         int addr = ToInt(Eval(w.Address), 0, 65535);
@@ -246,30 +246,6 @@ public sealed partial class Interpreter
                 return;
             }
             Thread.Sleep(1);
-        }
-    }
-
-    void DoSys(SysStmt s)
-    {
-        int addr = ToInt(Eval(s.Address), 0, 65535);
-        switch (addr)
-        {
-            case 58692: // clear screen
-                Write("\u0093");
-                break;
-            case 65490: // CHROUT: print the character in A (POKE 780)
-                Write(((char)_bus.Ram[780]).ToString());
-                break;
-            case 64738: // reset
-                _lines.Clear();
-                ClearState();
-                ProgramChanged();
-                Write("\u0093");
-                Write(Banner);
-                _halted = true;
-                break;
-            default:
-                throw new BasicException(ErrorCode.IllegalQuantity); // machine code can't run in an interpreter
         }
     }
 

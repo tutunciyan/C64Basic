@@ -92,9 +92,18 @@ public sealed partial class Interpreter
     public void Write(string s)
     {
         if (s.Length == 0) return;
+        if (_cmdFile != null) { RedirectedWrite(s); return; }
         _dev.Write(s);
-        int reset = s.LastIndexOfAny(new[] { '\n', '\r', '\u0093' });
-        Col = reset >= 0 ? s.Length - reset - 1 : Col + s.Length;
+        foreach (char c in s)
+        {
+            switch (c)
+            {
+                case '\n': case '\r': case '\u0093': case '\u0013': Col = 0; break;
+                case '\u001d': Col++; break;
+                case '\u009d': if (Col > 0) Col--; break;
+                default: if (c >= ' ' && !(c >= '\u0080' && c <= '\u009f')) Col++; break;
+            }
+        }
     }
 
     void NewLineIfNeeded()
@@ -241,6 +250,7 @@ public sealed partial class Interpreter
 
     void ReportError(BasicException e)
     {
+        _cmdFile = null;
         NewLineIfNeeded();
         int? ln = _curLine >= 0 && _curLine < _lines.Count ? _lines[_curLine].Number : null;
         Write($"?{ErrorNames.Name(e.Code)}  ERROR" + (ln != null ? $" IN {ln}" : "") + "\n");
@@ -270,6 +280,8 @@ public sealed partial class Interpreter
         _gosubStack.Clear();
         _dataPos = 0;
         _data = null;
+        _files.Clear();
+        _cmdFile = null;
     }
 
     // ---------- statements ----------
@@ -342,9 +354,7 @@ public sealed partial class Interpreter
             case GetStmt g:
                 {
                     if (_curLine < 0) throw new BasicException(ErrorCode.IllegalDirect);
-                    string key = _dev.GetKey();
-                    bool isStr = g.Target is VarRef { Type: VarType.Str } or ArrayRef { Type: VarType.Str };
-                    Assign(g.Target, isStr ? Value.Str(key) : Value.Num(key.Length > 0 && char.IsAsciiDigit(key[0]) ? key[0] - '0' : 0));
+                    AssignKey(g.Target, TakeKey());
                     break;
                 }
             case DimStmt d:
@@ -362,8 +372,13 @@ public sealed partial class Interpreter
                     _dev.Poke(addr, val);
                     break;
                 }
-            case UnsupportedStmt:
-                throw new BasicException(ErrorCode.DeviceNotPresent);
+            case GetFileStmt gf: DoGetFile(gf); break;
+            case InputFileStmt inf: DoInputFile(inf); break;
+            case OpenStmt o: DoOpen(o); break;
+            case CloseStmt c: DoClose(c.File); break;
+            case CmdStmt cmd: DoCmd(cmd); break;
+            case WaitStmt w: DoWait(w); break;
+            case SysStmt sy: DoSys(sy); break;
             default:
                 ExecCommand(s);
                 break;
@@ -378,13 +393,22 @@ public sealed partial class Interpreter
 
     void DoPrint(PrintStmt p)
     {
+        BasicFile? file = null;
+        if (p.File != null)
+        {
+            file = FileFrom(p.File);
+            if (!file.Writing) throw new BasicException(ErrorCode.NotOutputFile);
+            if (_cmdFile == file) _cmdFile = null;
+        }
+        void Out(string t) { if (file == null) Write(t); else FileOut(file, t); }
+        int ColNow() => file?.Col ?? Col;
         bool lastWasSep = false;
         foreach (var part in p.Parts)
         {
             if (part.E == null)
             {
                 lastWasSep = true;
-                if (part.Sep == ',') Write(new string(' ', 10 - Col % 10));
+                if (part.Sep == ',') Out(new string(' ', 10 - ColNow() % 10));
                 continue;
             }
             lastWasSep = false;
@@ -392,15 +416,15 @@ public sealed partial class Interpreter
             if (part.E is FuncCall { Name: "TAB" or "SPC" } call)
             {
                 int n = ToInt(Eval(call.Args[0]), 0, 255);
-                int pad = call.Name == "TAB" ? n - Col : n;
-                if (pad > 0) Write(new string(' ', pad));
+                int pad = call.Name == "TAB" ? n - ColNow() : n;
+                if (pad > 0) Out(new string(' ', pad));
                 continue;
             }
 
             var v = Eval(part.E);
-            Write(v.IsStr ? v.S! : NumberFormat.Format(v.N) + " ");
+            Out(v.IsStr ? v.S! : NumberFormat.Format(v.N) + " ");
         }
-        if (!lastWasSep) Write("\n");
+        if (!lastWasSep) Out(file == null ? "\n" : "\r");
     }
 
     void DoOn(OnStmt o)

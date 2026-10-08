@@ -19,12 +19,23 @@ public interface IConsoleDevice
     void Poke(int address, int value) { }
 }
 
-/// <summary>Where LOAD, SAVE and VERIFY read and write program text.</summary>
+/// <summary>Where LOAD, SAVE, VERIFY and OPEN read and write files.</summary>
 public interface IFileSystem
 {
     bool Exists(string path);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> lines);
+
+    /// <summary>Whole-file read for OPEN/INPUT#. Records are separated by CR (CHR$(13)), as on a C64 disk.</summary>
+    string ReadAllText(string path) => string.Concat(ReadAllLines(path).Select(l => l + "\r"));
+
+    /// <summary>Whole-file write for CLOSE on a file opened for output.</summary>
+    void WriteAllText(string path, string text)
+    {
+        var parts = text.Split('\r').ToList();
+        if (parts[^1].Length == 0) parts.RemoveAt(parts.Count - 1);
+        WriteAllLines(path, parts);
+    }
 }
 
 public sealed class HostFileSystem : IFileSystem
@@ -32,4 +43,10 @@ public sealed class HostFileSystem : IFileSystem
     public bool Exists(string path) => File.Exists(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> lines) => File.WriteAllLines(path, lines);
+
+    public string ReadAllText(string path) =>
+        File.ReadAllText(path).Replace("\r\n", "\r").Replace('\n', '\r');
+
+    public void WriteAllText(string path, string text) =>
+        File.WriteAllText(path, text.Replace("\r", Environment.NewLine));
 }

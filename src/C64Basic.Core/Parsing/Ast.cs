@@ -23,7 +23,7 @@ public abstract record Stmt;
 
 public sealed record LetStmt(Expr Target, Expr Value) : Stmt;
 public sealed record PrintPart(Expr? E, char Sep);
-public sealed record PrintStmt(List<PrintPart> Parts) : Stmt;
+public sealed record PrintStmt(List<PrintPart> Parts, Expr? File = null) : Stmt;
 public sealed record IfStmt(Expr Cond) : Stmt { public int ElseIdx { get; set; } = -1; }
 public sealed record JumpEndStmt : Stmt;
 public sealed record GotoStmt(int Line) : Stmt;
@@ -40,6 +40,13 @@ public sealed record ReadStmt(Expr[] Targets) : Stmt;
 public sealed record RestoreStmt : Stmt;
 public sealed record InputStmt(string? Prompt, Expr[] Targets) : Stmt;
 public sealed record GetStmt(Expr Target) : Stmt;
+public sealed record InputFileStmt(Expr File, Expr[] Targets) : Stmt;
+public sealed record GetFileStmt(Expr File, Expr Target) : Stmt;
+public sealed record OpenStmt(Expr[] Args) : Stmt;
+public sealed record CloseStmt(Expr File) : Stmt;
+public sealed record CmdStmt(Expr File, Expr? Text) : Stmt;
+public sealed record WaitStmt(Expr Address, Expr Mask, Expr? Xor) : Stmt;
+public sealed record SysStmt(Expr Address) : Stmt;
 public sealed record DimItem(string Key, VarType Type, Expr[] Dims);
 public sealed record DimStmt(DimItem[] Items) : Stmt;
 public sealed record DefFnStmt(string Key, string ParamKey, Expr Body) : Stmt;
@@ -52,7 +59,6 @@ public sealed record LoadStmt(Expr? Name) : Stmt;
 public sealed record SaveStmt(Expr? Name) : Stmt;
 public sealed record VerifyStmt(Expr? Name) : Stmt;
 public sealed record ContStmt : Stmt;
-public sealed record UnsupportedStmt(string Keyword) : Stmt;
 
 /// <summary>Raised when execution reaches a statement that failed to parse (BASIC reports syntax errors at run time).</summary>
 public sealed record ErrorStmt(ErrorCode Code, int Column) : Stmt;

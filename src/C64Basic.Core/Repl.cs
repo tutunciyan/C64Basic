@@ -17,8 +17,7 @@ public sealed class Repl
 
     public void Banner()
     {
-        string title = _interp.Strict ? "COMMODORE 64 BASIC V2" : "COMMODORE 64 BASIC V2 (C# EDITION)";
-        _interp.Write($"\n    **** {title} ****\n\n 64K RAM SYSTEM  38911 BASIC BYTES FREE\n\nREADY.\n");
+        _interp.Write(_interp.Banner);
     }
 
     /// <summary>Runs until the input ends.</summary>

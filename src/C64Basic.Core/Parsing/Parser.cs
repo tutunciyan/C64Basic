@@ -12,9 +12,7 @@ public sealed class Parser
         "ATN", "PEEK", "LEN", "STR$", "VAL", "ASC", "CHR$", "LEFT$", "RIGHT$", "MID$",
     };
 
-    static readonly HashSet<string> Ignored = new() { "WAIT", "OPEN", "CLOSE", "CMD", "SYS" };
-
-    readonly List<Token> _t;
+        readonly List<Token> _t;
     readonly bool _strict;
     int _p;
 
@@ -111,14 +109,6 @@ public sealed class Parser
         if (t.Kind == TokKind.Name) { o.Add(ParseLet()); return; }
         if (t.Kind != TokKind.Keyword) throw Syn(t);
 
-        if (Ignored.Contains(t.Text))
-        {
-            Take();
-            while (!AtStmtEnd) Take();
-            o.Add(new UnsupportedStmt(t.Text));
-            return;
-        }
-
         switch (t.Text)
         {
             case "LET":
@@ -160,7 +150,50 @@ public sealed class Parser
             case "INPUT": o.Add(ParseInput()); break;
             case "GET":
                 Take();
-                o.Add(new GetStmt(ParseLValue()));
+                if (Cur.IsOp("#"))
+                {
+                    Take();
+                    var file = ParseExpr();
+                    Expect(TokKind.Comma);
+                    o.Add(new GetFileStmt(file, ParseLValue()));
+                }
+                else o.Add(new GetStmt(ParseLValue()));
+                break;
+            case "OPEN":
+                {
+                    Take();
+                    var args = new List<Expr> { ParseExpr() };
+                    while (Cur.Kind == TokKind.Comma && args.Count < 4) { Take(); args.Add(ParseExpr()); }
+                    o.Add(new OpenStmt(args.ToArray()));
+                    break;
+                }
+            case "CLOSE":
+                Take();
+                o.Add(new CloseStmt(ParseExpr()));
+                break;
+            case "CMD":
+                {
+                    Take();
+                    var file = ParseExpr();
+                    Expr? text = null;
+                    if (Cur.Kind == TokKind.Comma) { Take(); text = ParseExpr(); }
+                    o.Add(new CmdStmt(file, text));
+                    break;
+                }
+            case "WAIT":
+                {
+                    Take();
+                    var addr = ParseExpr();
+                    Expect(TokKind.Comma);
+                    var mask = ParseExpr();
+                    Expr? xor = null;
+                    if (Cur.Kind == TokKind.Comma) { Take(); xor = ParseExpr(); }
+                    o.Add(new WaitStmt(addr, mask, xor));
+                    break;
+                }
+            case "SYS":
+                Take();
+                o.Add(new SysStmt(ParseExpr()));
                 break;
             case "DATA":
                 {
@@ -310,6 +343,13 @@ public sealed class Parser
 
     PrintStmt ParsePrint()
     {
+        Expr? file = null;
+        if (Cur.IsOp("#"))
+        {
+            Take();
+            file = ParseExpr();
+            if (Cur.Kind == TokKind.Comma) Take();
+        }
         var parts = new List<PrintPart>();
         while (!AtStmtEnd)
         {
@@ -317,7 +357,7 @@ public sealed class Parser
             else if (Cur.Kind == TokKind.Comma) { Take(); parts.Add(new PrintPart(null, ',')); }
             else parts.Add(new PrintPart(ParseExpr(), '\0'));
         }
-        return new PrintStmt(parts);
+        return new PrintStmt(parts, file);
     }
 
     void ParseIf(List<Stmt> o)
@@ -404,6 +444,15 @@ public sealed class Parser
     Stmt ParseInput()
     {
         Take(); // INPUT
+        if (Cur.IsOp("#"))
+        {
+            Take();
+            var file = ParseExpr();
+            Expect(TokKind.Comma);
+            var fileTargets = new List<Expr> { ParseLValue() };
+            while (Cur.Kind == TokKind.Comma) { Take(); fileTargets.Add(ParseLValue()); }
+            return new InputFileStmt(file, fileTargets.ToArray());
+        }
         string? prompt = null;
         if (Cur.Kind == TokKind.String)
         {

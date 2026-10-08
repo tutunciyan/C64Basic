@@ -14,7 +14,7 @@ public sealed partial class Interpreter
         switch (key)
         {
             case "TI": return Value.Num(Math.Floor(NowSeconds() * 60));
-            case "ST": return Value.Zero;
+            case "ST": return Value.Num(_st);
             case "TI$":
                 {
                     int secs = (int)NowSeconds();

@@ -21,6 +21,7 @@ const string Usage = """
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
+      --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
@@ -35,6 +36,7 @@ const string Usage = """
 bool strict = false, fast = false, fullscreen = false;
 int scale = 3;
 int joyPort = 2;
+var sidModel = Sid.SidModel.Mos6581;
 string? stateFile = null;
 bool resume = false;
 string? program = null, tape = null, typeText = null, snapshot = null, chargen = null;
@@ -72,6 +74,11 @@ for (int i = 0; i < args.Length; i++)
         case "--joy":
             if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
+            break;
+        case "--sid":
+            if (++i >= args.Length || args[i] is not ("6581" or "8580"))
+            { Console.Error.WriteLine("--sid needs 6581 or 8580"); return 2; }
+            sidModel = args[i] == "8580" ? Sid.SidModel.Mos8580 : Sid.SidModel.Mos6581;
             break;
         case "--state":
             if (++i >= args.Length) { Console.Error.WriteLine("--state needs a file name"); return 2; }
@@ -133,4 +140,5 @@ var worker = new System.Threading.Thread(() =>
 { IsBackground = true, Name = "C64" };
 
 if (typeText != null) screen.Inject(typeText);
+interpreter.Bus.Sound.Model = sidModel;
 return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot, joyPort, stateFile, resume);

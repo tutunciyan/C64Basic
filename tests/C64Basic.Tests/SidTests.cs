@@ -203,3 +203,64 @@ public class SidTests
         Assert.InRange(ZeroCrossings(buffer), 870, 890);
     }
 }
+
+public class SidAccuracyTests
+{
+    static Bus Chip(Sid.SidModel model) { var bus = new Bus(); bus.Sound.Model = model; return bus; }
+
+    [Fact]
+    public void TheDefaultChipIsA6581() => Assert.Equal(Sid.SidModel.Mos6581, new Bus().Sound.Model);
+
+    [Fact]
+    public void FilterCurvesDifferBetweenTheModels()
+    {
+        var old = Chip(Sid.SidModel.Mos6581).Sound;
+        var cleaner = Chip(Sid.SidModel.Mos8580).Sound;
+        Assert.True(old.CutoffHz(1024) < cleaner.CutoffHz(1024) * 0.6);     // the 6581 stays low until late in the range
+        Assert.InRange(cleaner.CutoffHz(1024), 5500, 6500);                  // the 8580 is linear
+        Assert.Equal(old.CutoffHz(2047), cleaner.CutoffHz(2047), 1);        // both reach the top
+        Assert.True(old.CutoffHz(100) < old.CutoffHz(900));                  // and rise monotonically
+    }
+
+    static short[] Play(Bus bus, int waveform, int count = 4000)
+    {
+        bus.Write(0xD400, 0x00); bus.Write(0xD401, 0x10);
+        bus.Write(0xD403, 0x08);
+        bus.Write(0xD405, 0x00); bus.Write(0xD406, 0xF0);
+        bus.Write(0xD418, 0x0F);
+        bus.Write(0xD404, (byte)(waveform | 1));
+        var buffer = new short[count];
+        bus.Sound.Render(buffer, 44100);
+        return buffer;
+    }
+
+    static double Level(short[] s) => s.Skip(500).Sum(x => (double)x);
+
+    static double Energy(short[] s) => s.Skip(500).Sum(x => (double)x * x);
+
+    [Fact]
+    public void NoiseCombinedWithAnotherWaveformGoesSilent()
+    {
+        var bus = Chip(Sid.SidModel.Mos6581);
+        Assert.True(Energy(Play(bus, 0x80)) > 0);
+        var locked = Chip(Sid.SidModel.Mos6581);
+        Assert.Equal(0, Energy(Play(locked, 0x80 | 0x20)), 1);
+    }
+
+    [Fact]
+    public void CombinedWaveformsAreWeakerThanTheirParts()
+    {
+        double saw = Level(Play(Chip(Sid.SidModel.Mos6581), 0x20));
+        double both = Level(Play(Chip(Sid.SidModel.Mos6581), 0x30));       // triangle + saw
+        Assert.True(both < saw);
+        Assert.True(Energy(Play(Chip(Sid.SidModel.Mos6581), 0x30)) > 0);
+    }
+
+    [Fact]
+    public void The8580KeepsMoreOfACombinedWaveform()
+    {
+        double old = Level(Play(Chip(Sid.SidModel.Mos6581), 0x30));
+        double newer = Level(Play(Chip(Sid.SidModel.Mos8580), 0x30));
+        Assert.True(newer > old);
+    }
+}

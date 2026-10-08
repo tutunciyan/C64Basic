@@ -4,7 +4,9 @@ namespace C64Basic.Core.Machine;
 /// The 6581/8580 sound chip, 54272-54300, mirrored every 32 bytes through 54272-55295. Three voices with
 /// triangle, sawtooth, pulse and noise waveforms, ring modulation, hard sync, ADSR envelopes, a
 /// state-variable filter and the master volume. The host pulls mono samples with <see cref="Render"/>.
-/// Waveform combinations are ANDed rather than modelled analogue-accurately.
+/// Combined waveforms are modelled per chip: the 6581 loses the bits a neighbouring low bit pulls down, the 8580 passes
+/// more of the signal, and noise combined with another waveform locks up as on the real chip. The filter cutoff follows each
+/// model's curve (see <see cref="Model"/>).
 /// </summary>
 public sealed class Sid : IMemoryMapped
 {
@@ -12,6 +14,21 @@ public sealed class Sid : IMemoryMapped
 
     /// <summary>PAL system clock.</summary>
     public const double ClockHz = 985248;
+
+    /// <summary>The chip revision: it changes combined waveforms, the filter curve and resonance.</summary>
+    public enum SidModel { Mos6581, Mos8580 }
+
+    /// <summary>Which chip is fitted. The 6581 (default) is the original chip with the dark, strongly non-linear filter.</summary>
+    public SidModel Model { get; set; } = SidModel.Mos6581;
+
+    /// <summary>Filter corner frequency for an 11-bit cutoff value.</summary>
+    public double CutoffHz(int cutoff)
+    {
+        double x = cutoff / 2047.0;
+        return Model == SidModel.Mos6581
+            ? 30 + 11970 * Math.Pow(x, 2)          // bunched up at the low end, a steep rise at the top
+            : 30 + 11970 * x;                         // the 8580 is nearly linear
+    }
 
     const int Triangle = 0x10, Saw = 0x20, Pulse = 0x40, Noise = 0x80, Test = 0x08, RingMod = 0x04, Sync = 0x02, Gate = 0x01;
 
@@ -144,8 +161,9 @@ public sealed class Sid : IMemoryMapped
         }
 
         // state-variable filter; cutoff 0-2047 maps roughly 30 Hz-12 kHz
-        double fc = 2 * Math.Sin(Math.PI * (30 + _filterCutoff / 2047.0 * 11970) / 44100);
-        double q = 1.0 - 0.9 * ((_filterControl >> 4 & 15) / 15.0);
+        double fc = 2 * Math.Sin(Math.PI * CutoffHz(_filterCutoff) / 44100);
+        double resonance = (_filterControl >> 4 & 15) / 15.0;
+        double q = 1.0 - (Model == SidModel.Mos6581 ? 0.9 : 0.95) * resonance;
         double high = filtered - _low - q * _band;
         _band += fc * high;
         _low += fc * _band;
@@ -190,6 +208,8 @@ public sealed class Sid : IMemoryMapped
         int output = 0xFFF;
         int selected = v.Control & 0xF0;
         if (selected == 0) return 0x800;
+        int combined = selected & ~Noise;
+        bool several = (combined & (combined - 1)) != 0;     // more than one of triangle/saw/pulse
         if ((selected & Triangle) != 0)
         {
             int t = acc >> 11 & 0xFFF;
@@ -198,14 +218,37 @@ public sealed class Sid : IMemoryMapped
         }
         if ((selected & Saw) != 0) output &= acc >> 12;
         if ((selected & Pulse) != 0) output &= (acc >> 12) >= v.PulseWidth ? 0xFFF : 0;
+        if (several) output = Bleed(output, Model == SidModel.Mos6581 ? 0.5 : 0.2);
         if ((selected & Noise) != 0)
         {
+            if (selected != Noise)
+            {
+                v.Lfsr = 0;                                    // noise with anything else shifts zeros in until it is reset
+                return 0x800;
+            }
             int l = v.Lfsr;
             int n = (l >> 20 & 1) << 7 | (l >> 18 & 1) << 6 | (l >> 14 & 1) << 5 | (l >> 11 & 1) << 4
                   | (l >> 9 & 1) << 3 | (l >> 5 & 1) << 2 | (l >> 2 & 1) << 1 | (l & 1);
             output &= n << 4;
         }
         return output;
+    }
+
+    /// <summary>
+    /// In a combined waveform the bits pull on each other: a one next to a zero is weakened, so isolated high bits fade and the
+    /// output keeps its shape without being a hard AND. <paramref name="pull"/> is how strongly a zero neighbour drags a bit down.
+    /// </summary>
+    static int Bleed(int bits, double pull)
+    {
+        int result = 0;
+        for (int i = 0; i < 12; i++)
+        {
+            double level = bits >> i & 1;
+            double below = i > 0 ? bits >> (i - 1) & 1 : level, above = i < 11 ? bits >> (i + 1) & 1 : level;
+            level -= pull * ((1 - below) + (1 - above)) / 2 * level;
+            if (level > 0.5) result |= 1 << i;
+        }
+        return result;
     }
 
     void StepEnvelope(Voice v, double cycles)

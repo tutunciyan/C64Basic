@@ -307,3 +307,128 @@ public class CiaTests
         Assert.Equal(Vic2.Palette[1], frame[36 * Vic2.FrameWidth + 32]);
     }
 }
+
+public class CiaExtrasTests
+{
+    const double Cycle = 1.0 / Cia.ClockHz;
+
+    sealed class Clocked
+    {
+        public double Now;
+        public Bus Bus = new();
+        public Clocked() => Bus.Seconds = () => Now;
+        public void Wait(double cycles) => Now += cycles * Cycle;
+        public int Read(int a) => Bus.Read(a);
+        public void Write(int a, int v) => Bus.Write(a, (byte)v);
+    }
+
+    // ---------- PB6 / PB7 timer outputs ----------
+    [Fact]
+    public void TimerAToggleDrivesPb6()
+    {
+        var m = new Clocked();
+        m.Write(0xDD04, 99); m.Write(0xDD05, 0);          // underflow every 100 cycles
+        m.Write(0xDD0E, 0x07 | 0x00);                      // start, PBON, toggle
+        Assert.Equal(0x40, m.Read(0xDD01) & 0x40);        // starting sets the output high
+        m.Wait(100);
+        Assert.Equal(0, m.Read(0xDD01) & 0x40);
+        m.Wait(100);
+        Assert.Equal(0x40, m.Read(0xDD01) & 0x40);
+    }
+
+    [Fact]
+    public void TimerBDrivesPb7InPulseMode()
+    {
+        var m = new Clocked();
+        m.Write(0xDD06, 49); m.Write(0xDD07, 0);
+        m.Write(0xDD0F, 0x03);                             // start, PBON, pulse
+        Assert.Equal(0, m.Read(0xDD01) & 0x80);
+        m.Wait(50);
+        Assert.Equal(0x80, m.Read(0xDD01) & 0x80);        // the pulse right after the underflow
+        m.Wait(10);
+        Assert.Equal(0, m.Read(0xDD01) & 0x80);
+    }
+
+    [Fact]
+    public void WithoutPbOnThePortOwnsThePin()
+    {
+        var m = new Clocked();
+        m.Write(0xDD04, 9); m.Write(0xDD05, 0);
+        m.Write(0xDD0E, 0x01);
+        m.Wait(10);
+        Assert.Equal(0x40, m.Read(0xDD01) & 0x40);        // pulled up as ever
+    }
+
+    // ---------- shift register ----------
+    [Fact]
+    public void ShiftRegisterSendsAByteAndInterrupts()
+    {
+        var m = new Clocked();
+        byte? sent = null;
+        m.Bus.Cia2.SerialOut += b => sent = b;
+        m.Write(0xDD04, 3); m.Write(0xDD05, 0);           // timer A underflows every 4 cycles
+        m.Write(0xDD0E, 0x41);                             // started, serial output
+        m.Write(0xDD0D, 0x88);                             // enable the shift register interrupt
+        m.Write(0xDD0C, 0xA5);
+        m.Wait(40);
+        Assert.Null(sent);
+        Assert.False(m.Bus.Cia2.InterruptPending);
+        m.Wait(40);                                        // 16 underflows in all
+        Assert.True(m.Bus.Cia2.InterruptPending);
+        Assert.Equal((byte)0xA5, sent);
+        Assert.Equal(0x89, m.Read(0xDD0D));        // shift register + timer A underflow, with the IR bit
+    }
+
+    [Fact]
+    public void ShiftRegisterTakesAByteFromTheHost()
+    {
+        var m = new Clocked();
+        m.Write(0xDD0D, 0x88);
+        m.Bus.Cia2.ReceiveSerial(0x3C);
+        Assert.Equal(0x3C, m.Read(0xDD0C));
+        Assert.True(m.Bus.Cia2.InterruptPending);
+    }
+
+    [Fact]
+    public void NothingIsSentUntilTheRegisterIsWritten()
+    {
+        var m = new Clocked();
+        bool sent = false;
+        m.Bus.Cia2.SerialOut += _ => sent = true;
+        m.Write(0xDD04, 3); m.Write(0xDD05, 0);
+        m.Write(0xDD0E, 0x41);
+        m.Wait(500);
+        Assert.False(sent);
+    }
+
+    // ---------- TOD alarm ----------
+    [Fact]
+    public void TodAlarmRaisesItsInterrupt()
+    {
+        var m = new Clocked();
+        m.Write(0xDD0D, 0x84);                             // enable the alarm interrupt
+        m.Write(0xDD0F, 0x80);                             // writes now go to the alarm registers
+        m.Write(0xDD0B, 0x00); m.Write(0xDD0A, 0x00); m.Write(0xDD09, 0x02); m.Write(0xDD08, 0x00);   // 00:00:02.0 (hours 12 AM = 0x12 in BCD aside)
+        m.Write(0xDD0F, 0x00);
+        m.Write(0xDD0B, 0x12); m.Write(0xDD0A, 0); m.Write(0xDD09, 0); m.Write(0xDD08, 0);             // set the clock to midnight
+        Assert.False(m.Bus.Cia2.InterruptPending);
+        m.Now += 1.0;
+        Assert.False(m.Bus.Cia2.InterruptPending);
+        m.Now += 1.5;                                      // past two seconds
+        Assert.True(m.Bus.Cia2.InterruptPending);
+        Assert.Equal(0x84, m.Read(0xDD0D));
+    }
+
+    [Fact]
+    public void AMaskedAlarmOnlySetsTheFlag()
+    {
+        var m = new Clocked();
+        m.Write(0xDD0F, 0x80);
+        m.Write(0xDD0B, 0x12); m.Write(0xDD0A, 0); m.Write(0xDD09, 0x01); m.Write(0xDD08, 0);
+        m.Write(0xDD0F, 0x00);
+        m.Write(0xDD0B, 0x12); m.Write(0xDD0A, 0); m.Write(0xDD09, 0); m.Write(0xDD08, 0);
+        m.Now += 2;
+        Assert.False(m.Bus.Cia2.InterruptPending);
+        Assert.Equal(0x04, m.Read(0xDD0D));
+    }
+}

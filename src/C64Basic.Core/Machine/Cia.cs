@@ -20,8 +20,9 @@ public interface IInputDevice
 /// <summary>
 /// A 6526 Complex Interface Adapter: two 8-bit ports, two 16-bit timers, a time-of-day clock and an interrupt
 /// register, mirrored every 16 bytes through its 256-byte window. Timers advance lazily from the bus clock when
-/// a register is touched. Not modelled: the PB6/PB7 timer outputs, the serial port shift register and TOD alarm
-/// interrupts.
+/// a register is touched. The timers can drive PB6/PB7 (pulse or toggle), the shift register sends bytes on timer A and
+/// takes them from the host, and the time of day raises its alarm interrupt. Not modelled: CNT pin counting, the FLAG
+/// line edge detection is left to the subclasses.
 /// </summary>
 public class Cia : IMemoryMapped
 {
@@ -45,6 +46,8 @@ public class Cia : IMemoryMapped
     sealed class Timer
     {
         public int Latch = 0xFFFF, Counter = 0xFFFF, Control;
+        public bool Toggle;                // the PB6/PB7 output in toggle mode
+        public long LastUnderflow = long.MinValue / 2;
         public bool Running => (Control & 1) != 0;
         public bool OneShot => (Control & 8) != 0;
     }
@@ -89,6 +92,7 @@ public class Cia : IMemoryMapped
         long aUnderflows = 0;
         if (_a.Running && (_a.Control & 0x20) == 0) aUnderflows = Advance(_a, delta, 1);
         else if (_a.Running) { } // counting CNT pulses: none arrive
+        if (aUnderflows > 0) ShiftOut(aUnderflows);
 
         if (_b.Running)
         {
@@ -98,6 +102,70 @@ public class Cia : IMemoryMapped
                 case 2: if (aUnderflows > 0) Advance(_b, aUnderflows, 2); break;
             }
         }
+        CheckAlarm();
+    }
+
+    // ---------- timer outputs on PB6 / PB7 ----------
+    /// <summary>The level a timer drives onto its port B pin, or null when the pin belongs to the port (PBON clear).</summary>
+    bool? TimerOutput(Timer t)
+    {
+        if ((t.Control & 2) == 0) return null;
+        if ((t.Control & 4) != 0) return t.Toggle;
+        return _lastCycle - t.LastUnderflow <= 1;      // a pulse lasts one clock cycle after the underflow
+    }
+
+    protected byte ApplyTimerOutputs(byte portB)
+    {
+        if (TimerOutput(_a) is bool a) portB = (byte)(a ? portB | 0x40 : portB & ~0x40);
+        if (TimerOutput(_b) is bool b) portB = (byte)(b ? portB | 0x80 : portB & ~0x80);
+        return portB;
+    }
+
+    // ---------- serial shift register ----------
+    int _shiftUnderflows;
+    bool _shifting;
+
+    /// <summary>Raised with the byte when the shift register has clocked a whole byte out (SP pin).</summary>
+    public event Action<byte>? SerialOut;
+
+    /// <summary>The host delivers a byte on the SP pin: in input mode it lands in the data register and raises the interrupt.</summary>
+    public void ReceiveSerial(byte value)
+    {
+        Sync();
+        if ((_a.Control & 0x40) != 0) return;          // output mode: the pin is driven by the chip
+        _sdr = value;
+        _flags |= 8;
+    }
+
+    void ShiftOut(long timerAUnderflows)
+    {
+        if (!_shifting || (_a.Control & 0x40) == 0) return;
+        _shiftUnderflows += (int)Math.Min(timerAUnderflows, 64);
+        if (_shiftUnderflows < 16) return;               // two underflows per bit, eight bits per byte
+        _shiftUnderflows = 0;
+        _shifting = false;
+        _flags |= 8;
+        SerialOut?.Invoke(_sdr);
+    }
+
+    // ---------- time of day alarm ----------
+    int _todChecked = -1;
+
+    int AlarmTenths()
+    {
+        int hour = FromBcd(_alarm[3] & 0x1F) % 12 + ((_alarm[3] & 0x80) != 0 ? 12 : 0);
+        return hour * 36000 + FromBcd(_alarm[2] & 0x7F) * 600 + FromBcd(_alarm[1] & 0x7F) * 10 + (_alarm[0] & 15);
+    }
+
+    void CheckAlarm()
+    {
+        int now = TodSeconds10();
+        if (_todChecked < 0 || _todStopped) { _todChecked = now; return; }
+        int alarm = AlarmTenths();
+        int span = (now - _todChecked + 864000) % 864000;
+        int offset = (alarm - _todChecked + 864000) % 864000;
+        if (span > 0 && offset > 0 && offset <= span) _flags |= 4;     // the clock passed (or reached) the alarm time
+        _todChecked = now;
     }
 
     /// <summary>Counts <paramref name="ticks"/> down; returns how many times the timer underflowed.</summary>
@@ -111,11 +179,15 @@ public class Cia : IMemoryMapped
         {
             t.Control &= ~1;
             t.Counter = t.Latch;
+            t.Toggle = !t.Toggle;
+            t.LastUnderflow = _lastCycle;
             return 1;
         }
         long rest = ticks - toUnderflow, period = t.Latch + 1L;
         long count = 1 + rest / period;
         t.Counter = (int)(t.Latch - rest % period);
+        if ((count & 1) != 0) t.Toggle = !t.Toggle;
+        t.LastUnderflow = _lastCycle - rest % period;
         return count;
     }
 
@@ -167,6 +239,7 @@ public class Cia : IMemoryMapped
         _todLatched = false;
         _todBase = seconds;
         _todAt = Bus.Seconds();
+        _todChecked = TodSeconds10();
         if (reg == 3) _todStopped = true;        // writing hours halts the clock...
         else if (reg == 0) _todStopped = false;  // ...until tenths are written
     }
@@ -181,7 +254,7 @@ public class Cia : IMemoryMapped
         {
             // an output pin that is high is only weakly driven: a joystick or key can still pull it low
             case 0: return (byte)((Pra & Ddra | ~Ddra) & PinsA());
-            case 1: return (byte)((Prb & Ddrb | ~Ddrb) & PinsB());
+            case 1: Sync(); return ApplyTimerOutputs((byte)((Prb & Ddrb | ~Ddrb) & PinsB()));
             case 2: return Ddra;
             case 3: return Ddrb;
             case 4: return (byte)Peek(_a);
@@ -216,7 +289,7 @@ public class Cia : IMemoryMapped
             case 6: Sync(); _b.Latch = _b.Latch & 0xFF00 | value; break;
             case 7: Sync(); _b.Latch = _b.Latch & 0x00FF | value << 8; if (!_b.Running) _b.Counter = _b.Latch; break;
             case 8: case 9: case 10: case 11: WriteTod(reg - 8, value); break;
-            case 12: _sdr = value; break;
+            case 12: _sdr = value; Sync(); if ((_a.Control & 0x40) != 0) { _shifting = true; _shiftUnderflows = 0; } break;
             case 13:
                 Sync();
                 if ((value & 0x80) != 0) _mask |= (byte)(value & 0x1F); else _mask &= (byte)~(value & 0x1F);
@@ -230,6 +303,7 @@ public class Cia : IMemoryMapped
     {
         Sync();
         if ((value & 0x10) != 0) t.Counter = t.Latch; // force load strobe
+        if ((value & 1) != 0 && !t.Running) t.Toggle = true;   // starting a timer sets its toggle output high
         t.Control = value & ~0x10;
     }
 
@@ -255,6 +329,7 @@ public class Cia : IMemoryMapped
         Bus.ReadExact(r, 4).CopyTo(_alarm, 0);
         _todAt = Bus.Seconds();   // the clocks run on from now
         _todLatched = false;
+        _todChecked = -1;
         _lastCycle = Now();
     }
 

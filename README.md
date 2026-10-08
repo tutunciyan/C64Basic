@@ -126,9 +126,17 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
 `interp.Bus` models the VIC-II and SID registers. `Bus.Vic.Render(uint[])` draws a 384x272 ARGB frame: text,
 multicolour and extended-colour text, hires and multicolour bitmaps, custom character sets, the VIC bank from
 `$DD00`, and eight sprites (expansion, multicolour, priority, sprite-sprite and sprite-background collisions).
-`$D012`/`$D011` give a raster line that advances at 50 Hz and the raster-compare flag is set in `$D019`.
+`$D012`/`$D011` give a raster line that advances at 50 Hz (312 lines of 63 cycles) and the raster-compare flag is set in `$D019`.
+The picture is drawn per raster line from a log of register writes, so changes made mid-frame by raster interrupts show up where
+they were made: colour bars, split screens, sprite multiplexing (a sprite register rewritten after its line is drawn gives a second
+sprite), fine scrolling (`$D011`/`$D016`), and the border tricks that open the top/bottom border (RSEL switched at the right line) and
+the side borders (CSEL switched at cycle 56/57). While machine code runs (`SYS`) the clock follows the instructions cycle for cycle,
+interrupts are taken after every instruction, and the VIC-II steals cycles on bad lines (about 40) and for sprites (2 each, plus 1),
+so a stable raster interrupt sees the same line every frame. BASIC itself runs on the host's clock.
 `Bus.Sound.Render(short[], sampleRate)` produces mono audio: three voices, four waveforms, ring modulation,
-sync, ADSR, a state-variable filter and volume. `IVideoDevice` and `IAudioDevice` are the interfaces a front end
+sync, ADSR, a state-variable filter and volume. `Bus.Sound.Model` picks the 6581 (default; dark, strongly non-linear filter,
+combined waveforms lose bits) or the 8580 (`--sid 8580` in the GUI; linear cutoff, cleaner combinations). Noise combined with another
+waveform locks up as on the real chip. The combined waveforms are modelled, not sampled from real chips. `IVideoDevice` and `IAudioDevice` are the interfaces a front end
 implements to show and play these; the terminal front end does not, so sprites and sound only come out through a
 host that calls them (use `src/C64Basic.Gui`). A SID frequency register tops out near 3.8 kHz, as on a real chip.
 
@@ -137,8 +145,9 @@ interrupt register; they run from `Bus.Seconds`. CIA 1 reads a host-supplied `II
 matrix and joystick ports (`PEEK(56320)` for joystick 2), CIA 2 port A picks the VIC bank, and CIA 1 timer A is
 the 60 Hz system interrupt (`InterruptPending`, for the CPU to poll). With an `IInputDevice` set on `Bus.Input`,
 `PEEK(197)` gives the KERNAL key index (64 = none) and `PEEK(653)` the shift/C=/CTRL flags. The jiffy clock at
-160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. The PB6/PB7 timer outputs, the serial
-shift register and TOD alarms are not modelled, and the terminal front end does not supply input.
+160-162 and `TI` are the same clock, and `POKE` to 160-162 sets `TI`. Timers A/B drive PB6/PB7 (pulse or toggle), the shift register
+clocks a byte out on timer A (`SerialOut`) or takes one from the host (`ReceiveSerial`) and raises its interrupt, and the TOD alarm sets
+flag 4. The CNT pin is not modelled, and the terminal front end does not supply input.
 
 ## The picture in a terminal (`--pixels`)
 

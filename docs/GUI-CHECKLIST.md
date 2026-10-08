@@ -37,6 +37,9 @@ and tick them off. Note the OS and the result.
 - [ ] `POKE 1024,1:POKE 55296,5` draws a white-ish A in the top-left corner.
 - [ ] samples/sysdemo.bas fills the screen with a pattern and returns to the prompt.
 
+- [ ] `--sid 8580` starts without error; a filtered sound (`POKE 54295,1:POKE 54296,31+16`, sweep `POKE 54294`) is brighter than with the default 6581.
+- [ ] A raster-bar machine-code demo (colour changed by a raster IRQ) shows steady, non-flickering bars and the BASIC prompt stays responsive.
+
 ## Clipboard
 - [ ] Copy a short BASIC program from a text editor, press Ctrl+V (and again with Shift+Insert): it is typed line by line and `RUN` works. Tabs and accented characters do not break it.
 - [ ] Ctrl+C after `PRINT "HELLO"` puts the screen text on the clipboard.

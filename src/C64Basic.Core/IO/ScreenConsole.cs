@@ -19,7 +19,10 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
     readonly ConcurrentQueue<char> _keys = new();
     readonly ManualResetEventSlim _keyArrived = new(false);
     readonly bool[] _matrix = new bool[64];
-    readonly byte[] _joystick = new byte[3];
+    /// <summary>Joystick state per input source (keyboard, each gamepad) and port; a port reads as the OR of its sources.</summary>
+    public const int JoystickSources = 8;
+
+    readonly byte[,] _joystick = new byte[JoystickSources, 3];
     ScreenEditor? _editor;
     volatile bool _waiting, _closed;
 
@@ -128,7 +131,12 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
         Array.Clear(_joystick);
     }
 
-    public void SetJoystick(int port, byte bits) => _joystick[port] = bits;
+    /// <summary>Sets what one input source (0 = the keyboard, 1-4 = gamepads) holds on a joystick port (1 or 2).</summary>
+    public void SetJoystick(int port, byte bits, int source = 0)
+    {
+        if (port is < 1 or > 2 || source is < 0 or >= JoystickSources) return;
+        _joystick[source, port] = JoystickMapping.Normalize(bits);
+    }
 
     public byte KeyColumn(int column)
     {
@@ -137,7 +145,13 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice
         return (byte)rows;
     }
 
-    public byte Joystick(int port) => _joystick[port];
+    public byte Joystick(int port)
+    {
+        if (port is < 1 or > 2) return 0;
+        byte bits = 0;
+        for (int source = 0; source < JoystickSources; source++) bits |= _joystick[source, port];
+        return JoystickMapping.Normalize(bits);
+    }
 
     volatile bool _restore;
 

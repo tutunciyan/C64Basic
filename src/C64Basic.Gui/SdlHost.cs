@@ -17,6 +17,9 @@ static unsafe class SdlHost
     static AudioCallback _audioCallback = null!; // kept alive for SDL
     static Bus _bus = null!;
 
+    /// <summary>The joystick port the numpad drives; the Pause key switches it between 1 and 2.</summary>
+    static int _keyboardPort = 2;
+
     /// <summary>
     /// Silk.NET looks for SDL2 by bare name, which does not reach the copy in <c>runtimes/&lt;rid&gt;/native</c> that a
     /// plain build leaves on Linux and macOS (a published folder has it next to the executable). So the bundled library is
@@ -39,11 +42,12 @@ static unsafe class SdlHost
         return Sdl.GetApi(); // fall back to the system's SDL2
     }
 
-    public static int Run(Interpreter interpreter, ScreenConsole console, System.Threading.Thread worker, int scale, bool fullscreen, string? snapshot)
+    public static int Run(Interpreter interpreter, ScreenConsole console, System.Threading.Thread worker, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2)
     {
         _bus = interpreter.Bus;
+        _keyboardPort = keyboardPort;
 
-        if (Sdl.Init(Sdl.InitVideo | Sdl.InitAudio | Sdl.InitEvents) != 0)
+        if (Sdl.Init(Sdl.InitVideo | Sdl.InitAudio | Sdl.InitEvents | Sdl.InitGamecontroller) != 0)
         {
             Console.Error.WriteLine("SDL could not start: " + Sdl.GetErrorS());
             return 1;
@@ -63,6 +67,8 @@ static unsafe class SdlHost
 
         uint audio = OpenAudio();
         Sdl.StartTextInput();
+        var gamepads = new Gamepads(Sdl, console);
+        gamepads.OpenAll();
         worker.Start();
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
@@ -81,6 +87,13 @@ static unsafe class SdlHost
                     case EventType.Keydown: running &= KeyDown(e.Key, interpreter, console, window, frame, ref joystick); break;
                     case EventType.Keyup: KeyUp(e.Key, console, ref joystick); break;
                     case EventType.Textinput: TextInput(e.Text, console); break;
+                    case EventType.Controllerdeviceadded:
+                    case EventType.Controllerdeviceremoved:
+                    case EventType.Controllerbuttondown:
+                    case EventType.Controllerbuttonup:
+                    case EventType.Controlleraxismotion:
+                        gamepads.Handle(e);
+                        break;
                     case EventType.Dropfile: DropFile(e.Drop.File, interpreter, console); break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         console.ReleaseAllKeys();
@@ -111,6 +124,7 @@ static unsafe class SdlHost
         }
 
         console.Close();
+        gamepads.CloseAll();
         if (audio != 0) Sdl.CloseAudioDevice(audio);
         Sdl.DestroyTexture(texture);
         Sdl.DestroyRenderer(renderer);
@@ -170,6 +184,13 @@ static unsafe class SdlHost
             case Scancode.ScancodePagedown:
                 console.SetRestore(true);
                 return true;
+            case Scancode.ScancodePause when !repeat:
+                // move the numpad joystick to the other port
+                console.SetJoystick(_keyboardPort, 0);
+                _keyboardPort = _keyboardPort == 2 ? 1 : 2;
+                console.SetJoystick(_keyboardPort, joystick);
+                Sdl.SetWindowTitle(window, $"C64 BASIC (numpad = joystick {_keyboardPort})");
+                return true;
             case Scancode.ScancodeEscape:
                 console.BreakRequested = true;
                 console.SetKey(63, true);
@@ -180,7 +201,7 @@ static unsafe class SdlHost
         if (bit != 0)
         {
             joystick |= bit;
-            console.SetJoystick(2, joystick);
+            console.SetJoystick(_keyboardPort, joystick);
             return true;
         }
 
@@ -207,7 +228,7 @@ static unsafe class SdlHost
         if (bit != 0)
         {
             joystick &= (byte)~bit;
-            console.SetJoystick(2, joystick);
+            console.SetJoystick(_keyboardPort, joystick);
             return;
         }
         if (KeyMap.Matrix.TryGetValue(code, out var matrix))

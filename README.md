@@ -153,7 +153,9 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
   `LIST` line can be edited and re-entered), long lines wrap and are read back as one, DEL/INST work, the key buffer holds
   ten characters.
 - Keys: Esc = RUN/STOP, F1-F8, Home (Shift+Home clears), Ctrl+1-8 / Alt+1-8 pick the text colour, Ctrl+9/0 reverse on/off.
-  The key matrix is live for machine code that scans `$DC00`/`$DC01`; the numpad is joystick port 2 (8/2/4/6, 0 = fire).
+  The key matrix is live for machine code that scans `$DC00`/`$DC01`; the numpad is a joystick (8/2/4/6, 0 = fire) on port 2, or on port 1 with `--joy 1` or the Pause key. Game controllers work too: the
+  first is on port 2, the second on port 1, with the D-pad or left stick for directions and A/B/X/Y for fire, and they can be plugged in
+  while the window is open.
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
 - Character sets: the real ROM is copyrighted, so the built-in set is drawn in this project (C64-style letters and digits,
@@ -163,7 +165,7 @@ shift register and TOD alarms are not modelled, and the terminal front end does 
 - Typing is like the real keyboard: Shift+letter gives a graphics symbol (a capital in the lower-case set), and quote mode
   works. After an opening quote control keys (colours, cursor, CLR) show as reverse symbols and read back as the codes, so
   `PRINT "<Ctrl+2>HELLO"` can be typed. RETURN or the closing quote ends it.
-- Limits: the graphics are approximations of the real shapes, and there is no gamepad or port 1 joystick.
+- Limits: the graphics are approximations of the real shapes. Paddles are not supported.
 
 ## Not implemented
 

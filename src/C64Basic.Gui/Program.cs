@@ -21,6 +21,7 @@ const string Usage = """
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
       --disk [n=]<f>  mount a .d64 disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
+      --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       -h, --help      show this help
 
@@ -31,6 +32,7 @@ const string Usage = """
 
 bool strict = false, fast = false, fullscreen = false;
 int scale = 3;
+int joyPort = 2;
 string? program = null, tape = null, typeText = null, snapshot = null, chargen = null;
 var disks = new List<(int Device, string Path)>();
 
@@ -62,6 +64,10 @@ for (int i = 0; i < args.Length; i++)
         case "--snapshot":
             if (++i >= args.Length) { Console.Error.WriteLine("--snapshot needs a file name"); return 2; }
             snapshot = args[i];
+            break;
+        case "--joy":
+            if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
+            { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
         case "--chargen":
             if (++i >= args.Length) { Console.Error.WriteLine("--chargen needs a ROM file"); return 2; }
@@ -118,4 +124,4 @@ var worker = new System.Threading.Thread(() =>
 { IsBackground = true, Name = "C64" };
 
 if (typeText != null) screen.Inject(typeText);
-return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot);
+return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot, joyPort);

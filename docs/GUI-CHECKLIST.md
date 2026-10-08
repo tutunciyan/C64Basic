@@ -27,6 +27,8 @@ and tick them off. Note the OS and the result.
 ## Joystick
 - [ ] `LOAD "samples/joystick"` then `RUN` (samples/joystick.bas): numpad 8/2/4/6 move the sprite, 0 quits. Releasing a key stops that direction.
 - [ ] Switching to another window while holding a key does not leave it stuck.
+- [ ] Pause moves the numpad joystick to port 1 (the title says so): `PRINT PEEK(56321)` changes while holding numpad 8 and `PEEK(56320)` does not. `--joy 1` starts that way.
+- [ ] A game controller (plug it in after the window is open too): D-pad and left stick move the sprite in samples/joystick.bas, A/B/X/Y fire. A second controller drives port 1. Unplugging one releases it.
 
 ## Graphics and sound
 - [ ] samples/sprite.bas: a yellow ball bounces off all four edges, including past X=255.

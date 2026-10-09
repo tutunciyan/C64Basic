@@ -1,3 +1,9 @@
+# Unreleased
+
+**ROM mode (work in progress)**
+- The 6502 core runs on any memory map (`ICpuMemory`) and has a native mode with real vectors, interrupt lines, the SO pin and the
+  cycle of every bus access; `Lockstep` keeps processors with different clocks (C64 985248 Hz, 1541 1 MHz) in step.
+
 # Changes since v0.1.0
 
 **Character set and screen**

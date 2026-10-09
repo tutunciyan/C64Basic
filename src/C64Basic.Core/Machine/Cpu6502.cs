@@ -21,6 +21,13 @@ public enum CpuStop
 /// <summary>What the CPU does after a trap has run in place of the code at its address.</summary>
 public enum TrapResult { Return, Continue, Stop }
 
+/// <summary>What a processor sees: 64K of address space. The C64's <see cref="Bus"/> and the 1541's memory map implement it.</summary>
+public interface ICpuMemory
+{
+    int Read(int address);
+    void Write(int address, byte value);
+}
+
 /// <summary>
 /// An NMOS 6502: all 151 documented opcodes with cycle counts (page-crossing and branch penalties), decimal mode,
 /// read-modify-write dummy writes and IRQ/BRK sequencing. Memory goes through the <see cref="Bus"/>. The C64 ROMs are
@@ -36,7 +43,21 @@ public sealed class Cpu6502
     /// <summary>Cycles between <see cref="Tick"/> calls and between interrupt-line polls.</summary>
     const int TickInterval = 1024, IrqPollInterval = 32;
 
-    readonly Bus _bus;
+    readonly ICpuMemory _mem;
+    readonly Bus? _bus;
+
+    /// <summary>
+    /// A processor running real ROM code: no traps, no emulated KERNAL or BASIC, interrupts and BRK always go through the vectors at
+    /// $FFFA-$FFFF, and the interrupt lines come from <see cref="IrqLine"/> and <see cref="NmiLine"/>. Used for the C64 in ROM mode
+    /// and for the 1541's own 6502. Drive it with <see cref="StepNative"/>.
+    /// </summary>
+    public bool Native { get; }
+
+    /// <summary>The (level-triggered) IRQ line in native mode.</summary>
+    public Func<bool>? IrqLine { get; set; }
+
+    /// <summary>The (edge-triggered) NMI line in native mode.</summary>
+    public Func<bool>? NmiLine { get; set; }
 
     public byte A, X, Y, SP = 0xFF, P = FlagU;
     public int PC;
@@ -61,11 +82,21 @@ public sealed class Cpu6502
     /// </summary>
     public bool CycleAccurate { get; set; }
 
-    public Cpu6502(Bus bus) => _bus = bus;
+    /// <summary>A processor for the BASIC interpreter's machine code: KERNAL and BASIC entry points are traps, see <see cref="Traps"/>.</summary>
+    public Cpu6502(Bus bus) { _bus = bus; _mem = bus; }
+
+    /// <summary>A native processor on any memory map (see <see cref="Native"/>).</summary>
+    public Cpu6502(ICpuMemory memory) { _mem = memory; Native = true; }
+
+    /// <summary>
+    /// The cycle (on this processor's clock) at which the memory access in progress happens. The data access is the last cycle of
+    /// an instruction, so chips that care about exact timing (the IEC bus, the drive's VIAs) see it there and not at the start.
+    /// </summary>
+    public long AccessCycle { get; private set; }
 
     // ---------- helpers ----------
-    int Rd(int address) => _bus.Read(address & 0xFFFF);
-    void Wr(int address, int value) => _bus.Write(address & 0xFFFF, (byte)value);
+    int Rd(int address) { AccessCycle = Cycles - 1; return _mem.Read(address & 0xFFFF); }
+    void Wr(int address, int value) { AccessCycle = Cycles - 1; _mem.Write(address & 0xFFFF, (byte)value); }
     int Fetch() { int v = Rd(PC); PC = (PC + 1) & 0xFFFF; return v; }
     int Word(int address) => Rd(address) | Rd(address + 1) << 8;
 
@@ -77,8 +108,8 @@ public sealed class Cpu6502
     public void SetNZ(int v) { SetFlag(FlagZ, (v & 0xFF) == 0); SetFlag(FlagN, (v & 0x80) != 0); }
 
     /// <summary>True while the KERNAL ROM would be mapped in at 57344-65535.</summary>
-    bool KernalVisible => (_bus.Ram[1] & 2) != 0;
-    bool BasicVisible => (_bus.Ram[1] & 3) == 3;
+    bool KernalVisible => _bus != null && !Native && (_bus!.Ram[1] & 2) != 0;
+    bool BasicVisible => _bus != null && !Native && (_bus!.Ram[1] & 3) == 3;
 
     bool InRom(int pc) => pc >= 0xE000 ? KernalVisible : pc >= 0xA000 && pc < 0xC000 && BasicVisible;
 
@@ -86,6 +117,7 @@ public sealed class Cpu6502
     /// <summary>Runs the routine at <paramref name="address"/> as if JSR'd, until it returns, stops or is interrupted.</summary>
     public CpuStop Call(int address)
     {
+        if (_bus == null || Native) throw new InvalidOperationException("Call is for the interpreter's processor; a native processor is run with StepNative");
         StopReason = CpuStop.None;
         byte savedSp = SP;
         Push((ReturnAddress - 1) >> 8);
@@ -94,7 +126,7 @@ public sealed class Cpu6502
 
         long nextTick = Cycles + TickInterval, nextIrq = Cycles + IrqPollInterval;
         int pollInterval = CycleAccurate ? 1 : IrqPollInterval;
-        if (CycleAccurate) _bus.FollowCycles(() => Cycles);
+        if (CycleAccurate) _bus!.FollowCycles(() => Cycles);
         try
         {
             while (StopReason == CpuStop.None)
@@ -103,15 +135,15 @@ public sealed class Cpu6502
                 if (Cycles >= nextIrq)
                 {
                     nextIrq = Cycles + pollInterval;
-                    bool nmi = _bus.NmiLine;
+                    bool nmi = _bus!.NmiLine;
                     if (nmi && !_nmiActive) Nmi(); // the NMI is edge-triggered and cannot be masked
                     _nmiActive = nmi;
-                    if (!GetFlag(FlagI) && _bus.IrqLine) Irq();
+                    if (!GetFlag(FlagI) && _bus!.IrqLine) Irq();
                 }
                 long before = Cycles;
                 Step();
-                if (CycleAccurate && _bus.FollowingCycles && StopReason == CpuStop.None)
-                    Cycles += _bus.Vic.StolenCycles(_bus.AbsoluteCycleOf(before), _bus.AbsoluteCycleOf(Cycles));
+                if (CycleAccurate && _bus!.FollowingCycles && StopReason == CpuStop.None)
+                    Cycles += _bus!.Vic.StolenCycles(_bus!.AbsoluteCycleOf(before), _bus!.AbsoluteCycleOf(Cycles));
                 if (Cycles >= nextTick)
                 {
                     nextTick = Cycles + TickInterval;
@@ -122,7 +154,7 @@ public sealed class Cpu6502
         finally
         {
             SP = savedSp;
-            if (CycleAccurate) _bus.ReleaseCycles();
+            if (CycleAccurate) _bus!.ReleaseCycles();
         }
         return StopReason;
     }
@@ -130,7 +162,7 @@ public sealed class Cpu6502
     /// <summary>Executes one instruction (or one trap).</summary>
     public void Step()
     {
-        if (Traps.Count > 0 && Traps.TryGetValue(PC, out var trap))
+        if (!Native && Traps.Count > 0 && Traps.TryGetValue(PC, out var trap))
         {
             Cycles += 6;
             switch (trap(this))
@@ -140,13 +172,50 @@ public sealed class Cpu6502
             }
             return;
         }
-        if (InRom(PC)) { StopReason = CpuStop.NoRom; return; }
+        if (!Native && InRom(PC)) { StopReason = CpuStop.NoRom; return; }
 
         int op = Fetch();
         int cycles = BaseCycles[op];
         if (cycles == 0) { StopReason = CpuStop.IllegalOpcode; PC = (PC - 1) & 0xFFFF; return; }
         Cycles += cycles;
         Execute(op);
+    }
+
+    // ---------- native mode ----------
+    /// <summary>Power-on or RESET: the stack pointer lands on $FD, interrupts are masked and execution starts at the vector at $FFFC.</summary>
+    public void Reset()
+    {
+        SP = 0xFD;
+        P = FlagU | FlagI;
+        PC = Word(0xFFFC);
+        _nmiActive = false;
+        StopReason = CpuStop.None;
+        Cycles += 7;
+    }
+
+    /// <summary>The SO pin: a falling edge sets the V flag (the 1541's gate array does this when a byte has been read from the disk).</summary>
+    public void SetOverflow() => P |= FlagV;
+
+    /// <summary>
+    /// One step of a native processor: takes a pending NMI (on the edge of its line) or IRQ (while the line is low and I is clear),
+    /// otherwise executes an instruction. <see cref="StopReason"/> says if it hit an opcode that is not implemented.
+    /// </summary>
+    public void StepNative()
+    {
+        bool nmi = NmiLine?.Invoke() ?? false;
+        bool edge = nmi && !_nmiActive;
+        _nmiActive = nmi;
+        if (edge) { EnterInterrupt(0xFFFA); return; }
+        if (!GetFlag(FlagI) && IrqLine?.Invoke() == true) { EnterInterrupt(0xFFFE); return; }
+        Step();
+    }
+
+    void EnterInterrupt(int vector)
+    {
+        Cycles += 7;
+        Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
+        SetFlag(FlagI, true);
+        PC = Word(vector);
     }
 
     // ---------- interrupts ----------
@@ -164,7 +233,7 @@ public sealed class Cpu6502
         else
         {
             int vector = Word(0xFFFE);
-            if (vector == 0) { _bus.Read(0xDC0D); return; } // no handler installed: ignore rather than run at 0
+            if (vector == 0) { _bus!.Read(0xDC0D); return; } // no handler installed: ignore rather than run at 0
             Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
             SetFlag(FlagI, true);
             PC = vector;
@@ -180,8 +249,8 @@ public sealed class Cpu6502
             if (vector == 0xFE47)
             {
                 // the stock handler: RESTORE alone does nothing; with RUN/STOP held it is the warm start
-                _bus.Read(0xDD0D);
-                var input = _bus.Input;
+                _bus!.Read(0xDD0D);
+                var input = _bus!.Input;
                 if (input != null && input.Restore && (input.KeyColumn(7) & 0x80) != 0) StopReason = CpuStop.Terminated;
                 Cycles += 40;
                 return;
@@ -193,7 +262,7 @@ public sealed class Cpu6502
         else
         {
             int vector = Word(0xFFFA);
-            if (vector == 0) { _bus.Read(0xDD0D); return; } // no handler installed
+            if (vector == 0) { _bus!.Read(0xDD0D); return; } // no handler installed
             Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
             SetFlag(FlagI, true);
             PC = vector;
@@ -204,7 +273,7 @@ public sealed class Cpu6502
     /// <summary>Acknowledges CIA 1 and ticks the jiffy clock, as the ROM's $EA31 does.</summary>
     public void AcknowledgeSystemIrq()
     {
-        _bus.Read(0xDC0D);
+        _bus!.Read(0xDC0D);
         SystemIrq?.Invoke();
     }
 
@@ -243,7 +312,7 @@ public sealed class Cpu6502
         else
         {
             int vector = Word(0xFFFE);
-            if (vector == 0) { StopReason = CpuStop.Break; return; }
+            if (vector == 0 && !Native) { StopReason = CpuStop.Break; return; }
             PC = vector;
         }
     }
@@ -334,9 +403,13 @@ public sealed class Cpu6502
     /// <summary>Read-modify-write: the real chip writes the old value back before the new one, which matters for I/O registers.</summary>
     void Modify(int address, Func<int, int> op)
     {
-        int old = Rd(address);
-        Wr(address, old);
-        Wr(address, op(old));
+        AccessCycle = Cycles - 3;
+        int old = _mem.Read(address & 0xFFFF);
+        AccessCycle = Cycles - 2;
+        _mem.Write(address & 0xFFFF, (byte)old);
+        int value = op(old);
+        AccessCycle = Cycles - 1;
+        _mem.Write(address & 0xFFFF, (byte)value);
     }
 
     void Branch(int op)

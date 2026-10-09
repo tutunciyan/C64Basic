@@ -15,7 +15,7 @@ public interface IMemoryMapped
 /// The C64 memory map: 64K RAM, the character ROM and the I/O area at 53248-57343, switched by the
 /// banking bits of address 1. Addresses without a chip behave as plain RAM that is only visible while I/O is.
 /// </summary>
-public sealed class Bus
+public sealed class Bus : ICpuMemory
 {
     public const int IoStart = 0xD000, IoLength = 0x1000;
 

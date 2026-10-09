@@ -30,7 +30,7 @@ static unsafe partial class SdlHost
 
         uint flags = (uint)WindowFlags.Resizable | (fullscreen ? (uint)WindowFlags.FullscreenDesktop : 0);
         var window = Sdl.CreateWindow("C64 (ROM mode)", Sdl.WindowposCentered, Sdl.WindowposCentered,
-            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? 16 : 0), flags);
+            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? BarUnits : 0), flags);
         if (window == null) { Console.Error.WriteLine("No window: " + Sdl.GetErrorS()); return 1; }
 
         var renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Accelerated | (uint)RendererFlags.Presentvsync);
@@ -53,25 +53,25 @@ static unsafe partial class SdlHost
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         ToolButton joyButton = null!;
-        joyButton = new ToolButton { Label = "JOY-", Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(machine.Input, joyButton), On = () => _cursorJoystick != 0 };
+        joyButton = new ToolButton { Label = "JOY-", Icon = ToolIcons.Joystick, Suffix = () => _cursorJoystick == 0 ? "-" : _cursorJoystick.ToString(), Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(machine.Input, joyButton), On = () => _cursorJoystick != 0 };
         _joyButton = joyButton;
         var buttons = new List<ToolButton>
         {
-            new() { Label = "OPEN", Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },
+            new() { Label = "OPEN", Icon = ToolIcons.Open, Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },
             joyButton,
-            new() { Label = "RESET", Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
-            new() { Label = "WARP", Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
-            new() { Label = "PAUSE", Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
-            new() { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = () => SaveRomState(machine) },
-            new() { Label = "LOAD", Hint = "load the machine state (Ctrl+L)", Click = () => LoadRomState(machine) },
-            new() { Label = "DISK-", Hint = "previous disk image in the folder (Ctrl+B)", Click = () => RomSwapDisk(machine, -1) },
-            new() { Label = "DISK+", Hint = "next disk image in the folder (Ctrl+N)", Click = () => RomSwapDisk(machine, 1) },
-            new() { Label = "TAPE", Hint = "tape PLAY / STOP (Ctrl+T)", Click = () => RomToggleTape(machine), On = () => machine.Tape.Active && machine.Tape.Play },
-            new() { Label = "REWIND", Hint = "rewind the tape (Ctrl+R)", Click = () => RomRewindTape(machine) },
-            new() { Label = "COPY", Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
-            new() { Label = "PASTE", Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
-            new() { Label = "SHOT", Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
-            new() { Label = "FULL", Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
+            new() { Label = "RESET", Icon = ToolIcons.Reset, Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
+            new() { Label = "WARP", Icon = ToolIcons.Warp, Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
+            new() { Label = "PAUSE", Icon = ToolIcons.Pause, Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
+            new() { Label = "SAVE", Icon = ToolIcons.Save, Hint = "save the machine state (Ctrl+S)", Click = () => SaveRomState(machine) },
+            new() { Label = "LOAD", Icon = ToolIcons.Load, Hint = "load the machine state (Ctrl+L)", Click = () => LoadRomState(machine) },
+            new() { Label = "DISK-", Icon = ToolIcons.DiskPrevious, Hint = "previous disk image in the folder (Ctrl+B)", Click = () => RomSwapDisk(machine, -1) },
+            new() { Label = "DISK+", Icon = ToolIcons.DiskNext, Hint = "next disk image in the folder (Ctrl+N)", Click = () => RomSwapDisk(machine, 1) },
+            new() { Label = "TAPE", Icon = ToolIcons.Tape, Hint = "tape PLAY / STOP (Ctrl+T)", Click = () => RomToggleTape(machine), On = () => machine.Tape.Active && machine.Tape.Play },
+            new() { Label = "REWIND", Icon = ToolIcons.Rewind, Hint = "rewind the tape (Ctrl+R)", Click = () => RomRewindTape(machine) },
+            new() { Label = "COPY", Icon = ToolIcons.Copy, Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
+            new() { Label = "PASTE", Icon = ToolIcons.Paste, Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
+            new() { Label = "SHOT", Icon = ToolIcons.Shot, Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
+            new() { Label = "FULL", Icon = ToolIcons.Full, Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
         };
         SetUp(buttons, machine.ScreenRows, text => machine.Type(PasteText(text)));
         var joystick = (byte)0;

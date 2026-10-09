@@ -18,8 +18,17 @@ static unsafe partial class SdlHost
         public required string Hint { get; init; }
         public required Action Click { get; init; }
         public Func<bool>? On { get; init; }
+
+        /// <summary>The picture on the button (see <see cref="ToolIcons"/>); without one the label is shown as text.</summary>
+        public string[]? Icon { get; init; }
+
+        /// <summary>A character shown beside the picture (the port the joystick is on).</summary>
+        public Func<string>? Suffix { get; init; }
         public int X, Width;                                   // in window pixels, set by the layout
     }
+
+    /// <summary>The toolbar's height in glyph-scale pixels: a 16 pixel picture with room above and below.</summary>
+    public const int BarUnits = 24;
 
     /// <summary>The toolbar can be turned off (<c>--no-toolbar</c>, Ctrl+F12); it is always out of the way in full screen.</summary>
     public static bool ToolbarEnabled { get; set; } = true;
@@ -156,11 +165,11 @@ static unsafe partial class SdlHost
     {
         _outWidth = width; _outHeight = height;
         _glyphScale = width >= 1100 ? 2 : 1;
-        _barHeight = toolbar ? 16 * _glyphScale : 0;
+        _barHeight = toolbar ? BarUnits * _glyphScale : 0;
         int x = 0;
         foreach (var button in _buttons)
         {
-            button.Width = (button.Label.Length * 8 + 8) * _glyphScale;
+            button.Width = (button.Icon != null ? ToolIcons.Size + 8 + (button.Suffix != null ? 8 : 0) : button.Label.Length * 8 + 8) * _glyphScale;
             button.X = x;
             x += button.Width + 2 * _glyphScale;
         }
@@ -305,11 +314,31 @@ static unsafe partial class SdlHost
             if (b.X + b.Width > _outWidth) break;                               // no room: the key still works
             uint colour = i == _pressed && i == _hover ? PressedColor : b.On?.Invoke() == true ? OnColor : i == _hover ? HoverColor : ButtonColor;
             FillRectangle(b.X, 2 * s, b.Width, _barHeight - 4 * s, colour);
-            DrawText(b.Label, b.X + 4 * s, (_barHeight - 8 * s) / 2, TextColor);
+            if (b.Icon != null)
+            {
+                DrawIcon(b.Icon, b.X + 4 * s, (_barHeight - ToolIcons.Size * s) / 2);
+                if (b.Suffix != null) DrawText(b.Suffix(), b.X + (4 + ToolIcons.Size) * s, (_barHeight - 8 * s) / 2, TextColor);
+            }
+            else DrawText(b.Label, b.X + 4 * s, (_barHeight - 8 * s) / 2, TextColor);
         }
         fixed (uint* pixels = _barPixels) Sdl.UpdateTexture(_barTexture, null, pixels, _outWidth * sizeof(uint));
         var target = new Rectangle<int>(0, 0, _outWidth, _barHeight);
         Sdl.RenderCopy(renderer, _barTexture, null, &target);
+    }
+
+    const uint AccentColor = 0xFFF0C060;
+
+    /// <summary>A 16 by 16 picture of '#' (main colour) and 'o' (accent) pixels at the glyph scale.</summary>
+    static void DrawIcon(string[] icon, int x, int y)
+    {
+        int s = _glyphScale;
+        for (int row = 0; row < ToolIcons.Size && row < icon.Length; row++)
+            for (int column = 0; column < ToolIcons.Size && column < icon[row].Length; column++)
+            {
+                char c = icon[row][column];
+                if (c != '#' && c != 'o') continue;
+                FillRectangle(x + column * s, y + row * s, s, s, c == '#' ? TextColor : AccentColor);
+            }
     }
 
     static void FillRectangle(int x, int y, int width, int height, uint colour)

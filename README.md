@@ -203,8 +203,9 @@ A terminal never reports a key release, so each typed key is held on the key mat
 - Keyboard joystick: the JOY button (Ctrl+J) cycles the cursor keys between being cursor keys, a joystick on port 1 and a joystick on port 2,
   with Space or Right Ctrl as fire (Space still types a space); the numpad follows to the same port. Games differ in the port they read:
   Ms. Pac-Man reads port 1, many read port 2. Pause moves the numpad joystick between the ports without touching the cursor keys.
-- Toolbar and mouse: a toolbar of buttons runs along the top of the window (OPEN, JOY, RESET, WARP, SAVE, LOAD, COPY, PASTE, SHOT, FULL; ROM mode adds
-  PAUSE, DISK-, DISK+, TAPE and REWIND), each with its key shown in the title bar while the pointer is over it, lit while a toggle is on. It
+- Toolbar and mouse: a toolbar of small pixel icons runs along the top of the window (open folder, joystick, reset, fast-forward for warp, save, load, copy, paste,
+  camera, full screen; ROM mode adds pause, previous and next disk, cassette and rewind), each with its name and key shown in the title bar
+  while the pointer is over it, lit while a toggle is on (the joystick icon carries the port: - / 1 / 2). It
   hides in full screen, `--no-toolbar` leaves it out and Ctrl+F12 switches it on and off. Shift + left drag picks text off the screen (the
   picked cells are drawn inverted) and copies it when the button is let go; COPY and Ctrl+C copy the selection, or the whole screen if
   nothing is picked; a middle click, PASTE, Ctrl+V and Shift+Insert type the clipboard. Without Shift the mouse is still the paddle (or the

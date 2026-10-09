@@ -68,7 +68,7 @@ static unsafe partial class SdlHost
 
         uint flags = (uint)WindowFlags.Resizable | (fullscreen ? (uint)WindowFlags.FullscreenDesktop : 0);
         var window = Sdl.CreateWindow("C64 BASIC", Sdl.WindowposCentered, Sdl.WindowposCentered,
-            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? 16 : 0), flags);
+            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? BarUnits : 0), flags);
         if (window == null) { Console.Error.WriteLine("No window: " + Sdl.GetErrorS()); return 1; }
 
         var renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Accelerated | (uint)RendererFlags.Presentvsync);
@@ -86,20 +86,20 @@ static unsafe partial class SdlHost
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         ToolButton joyButton = null!;
-        joyButton = new ToolButton { Label = "JOY-", Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(console, joyButton), On = () => _cursorJoystick != 0 };
+        joyButton = new ToolButton { Label = "JOY-", Icon = ToolIcons.Joystick, Suffix = () => _cursorJoystick == 0 ? "-" : _cursorJoystick.ToString(), Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(console, joyButton), On = () => _cursorJoystick != 0 };
         _joyButton = joyButton;
         SetUp(new[]
         {
-            new ToolButton { Label = "OPEN", Hint = "pick a disk, tape, program or state file (Ctrl+O)", Click = AskForFile },
+            new ToolButton { Label = "OPEN", Icon = ToolIcons.Open, Hint = "pick a disk, tape, program or state file (Ctrl+O)", Click = AskForFile },
             joyButton,
-            new ToolButton { Label = "RESET", Hint = "reset the machine (F10)", Click = () => console.Inject("SYS64738\r") },
-            new ToolButton { Label = "WARP", Hint = "warp speed (F9)", Click = () => interpreter.Warp = !interpreter.Warp, On = () => interpreter.Warp },
-            new ToolButton { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = SaveState },
-            new ToolButton { Label = "LOAD", Hint = "load the machine state (Ctrl+L)", Click = LoadState },
-            new ToolButton { Label = "COPY", Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
-            new ToolButton { Label = "PASTE", Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
-            new ToolButton { Label = "SHOT", Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
-            new ToolButton { Label = "FULL", Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
+            new ToolButton { Label = "RESET", Icon = ToolIcons.Reset, Hint = "reset the machine (F10)", Click = () => console.Inject("SYS64738\r") },
+            new ToolButton { Label = "WARP", Icon = ToolIcons.Warp, Hint = "warp speed (F9)", Click = () => interpreter.Warp = !interpreter.Warp, On = () => interpreter.Warp },
+            new ToolButton { Label = "SAVE", Icon = ToolIcons.Save, Hint = "save the machine state (Ctrl+S)", Click = SaveState },
+            new ToolButton { Label = "LOAD", Icon = ToolIcons.Load, Hint = "load the machine state (Ctrl+L)", Click = LoadState },
+            new ToolButton { Label = "COPY", Icon = ToolIcons.Copy, Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
+            new ToolButton { Label = "PASTE", Icon = ToolIcons.Paste, Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
+            new ToolButton { Label = "SHOT", Icon = ToolIcons.Shot, Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
+            new ToolButton { Label = "FULL", Icon = ToolIcons.Full, Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
         }, console.ScreenRows, text => console.Paste(text));
         var joystick = (byte)0;
         bool running = true, blinkOn = true;

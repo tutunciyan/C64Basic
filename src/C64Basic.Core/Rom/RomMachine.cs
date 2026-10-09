@@ -52,6 +52,9 @@ public sealed class RomMachine
     /// </summary>
     public event Action<GcrDisk>? DiskWritten;
 
+    /// <summary>While true <see cref="RunPaced"/> lets the machine stand still (the host looks at <see cref="Registers"/>); time does not run on.</summary>
+    public volatile bool Paused;
+
     /// <summary>Why the machine stopped by itself (an opcode that is not implemented), or null.</summary>
     public string? HaltReason { get; private set; }
 
@@ -183,7 +186,7 @@ public sealed class RomMachine
         while (!shouldStop())
         {
             while (_posted.TryDequeue(out var action)) action();
-            if (Halted) { Thread.Sleep(20); continue; }
+            if (Halted || Paused) { Thread.Sleep(20); origin = Seconds - clock.Elapsed.TotalSeconds; continue; }
             Feed();
             _lockstep.RunUntil(Seconds + 0.004, () => Halted);
             double ahead = Seconds - origin - clock.Elapsed.TotalSeconds;
@@ -300,6 +303,46 @@ public sealed class RomMachine
         }
         while (rows.Count > 0 && rows[^1].Length == 0) rows.RemoveAt(rows.Count - 1);
         return string.Join("\n", rows);
+    }
+
+    /// <summary>The processors in a line of text: C64 PC, A, X, Y, SP and the flags, then each 1541's PC.</summary>
+    public string Registers()
+    {
+        string Flags(Cpu6502 c) => new string(new[]
+        {
+            c.GetFlag(Cpu6502.FlagN) ? 'N' : 'n', c.GetFlag(Cpu6502.FlagV) ? 'V' : 'v', '-', c.GetFlag(Cpu6502.FlagB) ? 'B' : 'b',
+            c.GetFlag(Cpu6502.FlagD) ? 'D' : 'd', c.GetFlag(Cpu6502.FlagI) ? 'I' : 'i', c.GetFlag(Cpu6502.FlagZ) ? 'Z' : 'z', c.GetFlag(Cpu6502.FlagC) ? 'C' : 'c',
+        });
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"PC={Cpu.PC:X4} A={Cpu.A:X2} X={Cpu.X:X2} Y={Cpu.Y:X2} SP={Cpu.SP:X2} {Flags(Cpu)} line {Bus.Vic.Raster}");
+        for (int i = 0; i < Drives.Length; i++) sb.Append($" | 1541 #{8 + i} PC={Drives[i].Cpu.PC:X4} track {Drives[i].Mechanics.Track:0.#}");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The next (<paramref name="step"/> = 1) or previous (-1) disk image, in name order, in the folder of <paramref name="current"/>:
+    /// how a multi-disk game's disks sit side by side. Null when there is no other image there.
+    /// </summary>
+    public static string? SiblingImage(string current, int step)
+    {
+        string? folder = Path.GetDirectoryName(Path.GetFullPath(current));
+        if (folder == null || !Directory.Exists(folder)) return null;
+        var images = Directory.GetFiles(folder)
+            .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".d64" or ".g64")
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
+        int at = images.FindIndex(f => string.Equals(f, Path.GetFullPath(current), StringComparison.OrdinalIgnoreCase));
+        if (images.Count < 2 || at < 0) return null;
+        return images[((at + step) % images.Count + images.Count) % images.Count];
+    }
+
+    /// <summary>Swaps the disk of a drive for the next or previous image in its folder; returns the new path, or null if there is none.</summary>
+    public string? SwapDisk(int step, int device = 8)
+    {
+        string? current = Slot(device).Path;
+        if (current == null) return null;
+        string? next = SiblingImage(current, step);
+        if (next != null) MountDiskFile(next, device);
+        return next;
     }
 
     // ---------- the tape ----------

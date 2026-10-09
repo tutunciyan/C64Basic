@@ -7,6 +7,8 @@
   the repository).
 
 **ROM mode**
+- Window: Ctrl+N / Ctrl+B swap the disk for the next / previous image in its folder, Scroll Lock pauses and shows the registers in the title,
+  Ctrl+T and Ctrl+R work the tape, dropping a `.tap`, `.t64` or `.prg` mounts it. (`RomMachine.SwapDisk`, `Paused`, `Registers()`.)
 - A datasette on the cassette port: `--tape` / `RomMachine.MountTape(File)` feeds a `.tap` (or a `.t64` converted to KERNAL format) to CIA 1's
   FLAG pin while the motor line is on, with the sense switch closed; a `SAVE` records the write line's rising edges back to the tape (and a
   `.tap` file). The real KERNAL loads from it and reads its own recordings; turbo loaders see real pulses. Saved states are version 4.

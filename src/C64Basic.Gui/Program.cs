@@ -33,11 +33,12 @@ const string Usage = """
       --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
                       the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
-                      copy protection work. Typing, the joystick, the mouse and Ctrl+S / Ctrl+L (--state, --resume) work as usual; no program file argument, tape or --strict
+                      copy protection work. Typing, the joystick, the mouse and Ctrl+S / Ctrl+L (--state, --resume) work as usual; no program file argument or --strict
       -h, --help      show this help
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
           F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp).
+          ROM mode: Ctrl+N / Ctrl+B = next / previous disk image in the folder, Scroll Lock = pause (registers in the title), Ctrl+T = tape PLAY/STOP, Ctrl+R = rewind.
           Drop a .d64, .g64, .t64, .tap, .prg, .bas or .sav file on the window to mount or load it.
     """;
 

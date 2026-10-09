@@ -247,6 +247,10 @@ ROM mode has up to two drives: `--disk 8=a.d64 --disk 9=b.d64` puts a second 154
 serial bus as device 9, so `LOAD"X",8` and `SAVE"X",9` copy between disks; the window title shows which drive is turning. A state file
 keeps the number of drives it was taken with.
 
+In the ROM mode window: Ctrl+N and Ctrl+B swap the disk in drive 8 for the next or previous `.d64`/`.g64` in the same folder, in name order (the
+disks of a multi-disk game side by side), Scroll Lock pauses the machine and shows the registers of the processors, the raster line and the drive's
+head in the title, and dropping a `.tap` mounts a tape (a `.t64` or `.prg` goes on a blank disk).
+
 `--disk` also takes a `.t64` tape image or a single `.prg`: its programs go on a blank disk in memory (nothing is saved back), then
 `LOAD"NAME",8,1` and `RUN` as usual.
 
@@ -255,7 +259,7 @@ while the KERNAL's motor line (bit 5 of the processor port) is low, so the real 
 (bit 4) reads closed, and `LOAD` / `SAVE` without a device number use the tape, with the KERNAL's own timing (a program takes a minute or two
 of emulated time). A `SAVE` records the rising edges of the write line (bit 3) as pulses and adds them to the tape when the motor stops; a
 missing `.tap` is created empty and written. A `.t64` is put on a tape in the KERNAL's format, in memory. A saved state keeps the tape position
-(the tape file itself is mounted again by the host). There is no PLAY/STOP/REWIND button yet: `RomMachine.StopTape`, `PlayTape` and `Tape.Rewind` are the API.
+(the tape file itself is mounted again by the host). In the window Ctrl+T lets go of PLAY and presses it again, Ctrl+R rewinds (`RomMachine.StopTape`, `PlayTape`, `Tape.Rewind`).
 
 The drive **writes**, too: the write head puts what the DOS sends on the track, so `SAVE`, `SCRATCH`, `VALIDATE`, block commands and a
 full `NEW` (format) work against the real DOS. A mounted `.d64` file is saved back after every write (once all its sectors read cleanly

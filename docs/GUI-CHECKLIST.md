@@ -74,3 +74,8 @@ and tick them off. Note the OS and the result.
 - [ ] A `.g64` stays untouched after a `SAVE` (the title says it was not saved).
 - [ ] Ctrl+S in the middle of loading a game and Ctrl+L after it carries on loading; `--resume` starts from the saved state.
 - [ ] The title shows `1541: track N` while the drive spins and `writing` while it saves.
+- [ ] ROM mode, several `.d64` files in one folder (`--disk game-1.d64`): Ctrl+N mounts the next image in name order (the title says which), Ctrl+B the previous one, both wrap round; `LOAD"$",8` shows the other directory.
+- [ ] ROM mode, Scroll Lock pauses: the title shows `paused` with PC, A, X, Y, SP, the flags, the raster line and the drive's PC, the picture and sound stand still; Scroll Lock again carries on where it was.
+- [ ] ROM mode, `--tape some.tap` (or drop a `.tap`): `LOAD` finds the program without "PRESS PLAY ON TAPE", the screen goes blank with the loading border stripes while it plays; Ctrl+T lets go of PLAY (the KERNAL then asks for it) and presses it again, Ctrl+R rewinds.
+- [ ] ROM mode, `--disk 8=a.d64 --disk 9=b.d64`: `LOAD"$",9` lists the second disk, and the title names `1541 #9` while it turns.
+

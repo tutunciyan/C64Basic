@@ -132,7 +132,7 @@ static unsafe partial class SdlHost
 
     static string RomTitle(RomMachine machine)
     {
-        string title = _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)";
+        string title = machine.Paused ? "C64 (ROM mode, paused) - " + machine.Registers() : _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)";
         if (machine.Halted) return title + " - stopped: " + machine.HaltReason;
         for (int i = 0; i < machine.Drives.Length; i++)
         {
@@ -165,6 +165,10 @@ static unsafe partial class SdlHost
             case Scancode.ScancodeF12 when !repeat:
                 Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp");
                 return;
+            case Scancode.ScancodeScrolllock when !repeat:
+                machine.Paused = !machine.Paused;
+                _statusMessage = machine.Paused ? "paused: " + machine.Registers() : "running";
+                return;
             case Scancode.ScancodePagedown:
                 machine.Input.SetRestore(true);
                 return;
@@ -176,6 +180,40 @@ static unsafe partial class SdlHost
                 return;
         }
 
+        if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB)
+        {
+            int step = code == Scancode.ScancodeN ? 1 : -1;
+            machine.Post(() =>
+            {
+                try
+                {
+                    string? path = machine.SwapDisk(step);
+                    _statusMessage = path != null ? "disk swapped: " + Path.GetFileName(path) : "no other disk image next to the mounted one";
+                }
+                catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+            });
+            return;
+        }
+        if (!repeat && control && code == Scancode.ScancodeT)
+        {
+            machine.Post(() =>
+            {
+                if (!machine.Tape.Active) { _statusMessage = "no tape mounted (--tape, or drop a .tap on the window)"; return; }
+                if (machine.Tape.Play) machine.StopTape(); else machine.PlayTape();
+                _statusMessage = machine.Tape.Play ? "tape: PLAY" : "tape: STOP";
+            });
+            return;
+        }
+        if (!repeat && control && code == Scancode.ScancodeR)
+        {
+            machine.Post(() =>
+            {
+                if (!machine.Tape.Active) { _statusMessage = "no tape mounted"; return; }
+                machine.Tape.Rewind();
+                _statusMessage = "tape rewound";
+            });
+            return;
+        }
         if (!repeat && control && code == Scancode.ScancodeS) { SaveRomState(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeL) { LoadRomState(machine); return; }
         if (!repeat && ((control && code == Scancode.ScancodeV) || (shift && code == Scancode.ScancodeInsert)))
@@ -252,12 +290,27 @@ static unsafe partial class SdlHost
                         });
                         break;
                     }
+                case ".t64":
+                case ".prg":
+                    machine.Post(() =>
+                    {
+                        try { machine.MountDiskFile(path); _statusMessage = "put on a blank disk: " + Path.GetFileName(path) + " (LOAD\"NAME\",8,1)"; }
+                        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+                    });
+                    break;
+                case ".tap":
+                    machine.Post(() =>
+                    {
+                        try { machine.MountTapeFile(path); _statusMessage = "tape mounted: " + Path.GetFileName(path) + " (LOAD, and RUN)"; }
+                        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+                    });
+                    break;
                 case ".sav":
                     File.Copy(path, _romStateFile, overwrite: true);
                     LoadRomState(machine);
                     break;
                 default:
-                    _statusMessage = "ROM mode takes disk images (.d64, .g64) and saved states (.sav)";
+                    _statusMessage = "ROM mode takes disk images (.d64, .g64, .t64, .prg), tapes (.tap) and saved states (.sav)";
                     break;
             }
         }

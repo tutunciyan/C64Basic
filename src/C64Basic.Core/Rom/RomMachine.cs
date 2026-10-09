@@ -294,6 +294,14 @@ public sealed class RomMachine
     public void MountDiskFile(string path)
     {
         bool g64 = path.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".t64" or ".prg")
+        {
+            // a tape image or a single program: its files go on a blank disk (in memory only), to LOAD"NAME",8,1
+            MountDisk(DiskFromPrograms(path, extension));
+            DiskPath = path;
+            return;
+        }
         byte[] image;
         if (File.Exists(path)) image = File.ReadAllBytes(path);
         else if (!g64)
@@ -305,6 +313,21 @@ public sealed class RomMachine
         MountDisk(image);
         DiskPath = path;
         DiskSavesChanges = !g64;
+    }
+
+    static byte[] DiskFromPrograms(string path, string extension)
+    {
+        var disk = Disk.D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00");
+        byte[] data = File.ReadAllBytes(path);
+        if (extension == ".prg")
+            disk.Write(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), Disk.FileType.Prg, data, replace: false);
+        else
+        {
+            var tape = new Disk.T64Image(data);
+            foreach (var entry in tape.Directory())
+                disk.Write(Path.GetFileNameWithoutExtension(entry.Name).ToUpperInvariant(), Disk.FileType.Prg, tape.Read(entry.Name).Data, replace: true);
+        }
+        return disk.ToArray();
     }
 
     public void EjectDisk()

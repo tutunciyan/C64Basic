@@ -331,6 +331,33 @@ public class RomMachineTests
     }
 
     [Fact]
+    public void ATapeImageOrAProgramFileIsMountedAsADisk()
+    {
+        var m = Boot();
+        if (m == null) return;
+        string dir = Path.Combine(Path.GetTempPath(), "c64rom-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var tape = new T64Image(null, "MY TAPE");
+            tape.Write("HELLO", FileType.Prg, HelloProgram(), replace: false);
+            string t64 = Path.Combine(dir, "game.t64");
+            File.WriteAllBytes(t64, tape.ToArray());
+            m.MountDiskFile(t64);
+            Assert.False(m.DiskSavesChanges);
+            m.Type("LOAD\"HELLO\",8\rRUN\r");
+            Assert.True(m.RunUntil(() => m.ScreenText().Contains("HI FROM DISK"), 15), m.ScreenText());
+
+            string prg = Path.Combine(dir, "single.prg");
+            File.WriteAllBytes(prg, HelloProgram());
+            m.MountDiskFile(prg);
+            m.Type("NEW\rLOAD\"SINGLE\",8\rRUN\r");
+            Assert.True(m.RunUntil(() => m.ScreenText().Split('\n').Count(l => l == "HI FROM DISK") >= 1 && m.ScreenText().Contains("SEARCHING FOR SINGLE"), 15), m.ScreenText());
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void ADiskIsFormattedByTheRealDos()
     {
         var m = Boot();

@@ -243,6 +243,9 @@ What you get: the real boot (a RAM test, then the banner after about three secon
 of every track, half-tracks and speed zones included), disk swaps, `RESTORE` and RUN/STOP+RESTORE, the joystick, paddles and light pen,
 and a keyboard that goes through the matrix (so Ctrl, the Commodore key and Shift behave like the real ones).
 
+`--disk` also takes a `.t64` tape image or a single `.prg`: its programs go on a blank disk in memory (nothing is saved back), then
+`LOAD"NAME",8,1` and `RUN` as usual. There is no datasette in ROM mode.
+
 The drive **writes**, too: the write head puts what the DOS sends on the track, so `SAVE`, `SCRATCH`, `VALIDATE`, block commands and a
 full `NEW` (format) work against the real DOS. A mounted `.d64` file is saved back after every write (once all its sectors read cleanly
 again, so never half-way through a format; a missing `.d64` is created blank). A `.g64` is someone else's raw tracks: the drive may write

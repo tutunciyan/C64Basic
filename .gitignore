@@ -6,3 +6,11 @@ obj/
 /c64-*.bmp
 roms/
 samples/*.g64
+samples/*.t64
+samples/*.T64
+samples/*.prg
+samples/*.PRG
+samples/*.d64
+samples/*.D64
+samples/*.G64
+/src/C64Basic.Gui/Properties/launchSettings.json

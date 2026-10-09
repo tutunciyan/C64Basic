@@ -4,6 +4,8 @@
 - A JOY button (Ctrl+J): the cursor keys become a joystick on port 1 or port 2 (Space or Right Ctrl = fire), for games that need one.
 - An OPEN button and Ctrl+O: the system file dialog to pick a disk, tape, cartridge, program or state file; in ROM mode a picked or dropped
   disk or tape resets and starts its first program.
+- Sound level: the window plays the SID at 40 % by default (it was far louder than other programs); `--volume`, Ctrl+Up / Ctrl+Down, Ctrl+M and
+  speaker buttons on the toolbar.
 - Tooltips on the toolbar buttons (a label with the action and its key, after the pointer rests on a button).
 - The toolbar uses 16x16 pixel icons (`ToolIcons`) instead of text.
 - A toolbar above the picture in both windows (buttons for reset, warp, state, copy/paste, screenshot, full screen, and in ROM mode pause, disk

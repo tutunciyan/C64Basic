@@ -100,7 +100,7 @@ static unsafe partial class SdlHost
             new ToolButton { Label = "PASTE", Icon = ToolIcons.Paste, Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
             new ToolButton { Label = "SHOT", Icon = ToolIcons.Shot, Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
             new ToolButton { Label = "FULL", Icon = ToolIcons.Full, Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
-        }, console.ScreenRows, text => console.Paste(text));
+        }.Concat(VolumeButtons()), console.ScreenRows, text => console.Paste(text));
         var joystick = (byte)0;
         bool running = true, blinkOn = true;
         long blinkAt = Environment.TickCount64, startedAt = Environment.TickCount64;
@@ -205,6 +205,9 @@ static unsafe partial class SdlHost
     {
         var samples = new Span<short>(stream, length / sizeof(short));
         _bus.Sound.Render(samples, SampleRate);
+        float gain = _volumeGain;
+        if (gain < 0.999f)
+            for (int i = 0; i < samples.Length; i++) samples[i] = (short)(samples[i] * gain);
     }
 
     // ---------- keyboard ----------
@@ -217,6 +220,7 @@ static unsafe partial class SdlHost
         bool repeat = key.Repeat != 0;
         if (!(control && code == Scancode.ScancodeC) && code is not (Scancode.ScancodeLshift or Scancode.ScancodeRshift or Scancode.ScancodeLctrl or Scancode.ScancodeRctrl)) ClearSelection();
         if (code == Scancode.ScancodeF12 && control && !repeat) { ToolbarEnabled = !ToolbarEnabled; return true; }
+        if (VolumeKey(code, control)) return true;
 
         // emulator keys
         switch (code)

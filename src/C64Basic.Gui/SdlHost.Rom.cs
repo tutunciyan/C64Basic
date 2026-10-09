@@ -73,6 +73,7 @@ static unsafe partial class SdlHost
             new() { Label = "SHOT", Icon = ToolIcons.Shot, Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
             new() { Label = "FULL", Icon = ToolIcons.Full, Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
         };
+        buttons.AddRange(VolumeButtons());
         SetUp(buttons, machine.ScreenRows, text => machine.Type(PasteText(text)));
         var joystick = (byte)0;
         long startedAt = Environment.TickCount64, titleAt = 0;
@@ -179,6 +180,7 @@ static unsafe partial class SdlHost
         bool repeat = key.Repeat != 0;
         if (!(control && code == Scancode.ScancodeC) && code is not (Scancode.ScancodeLshift or Scancode.ScancodeRshift or Scancode.ScancodeLctrl or Scancode.ScancodeRctrl)) ClearSelection();
         if (code == Scancode.ScancodeF12 && control && !repeat) { ToolbarEnabled = !ToolbarEnabled; return; }
+        if (VolumeKey(code, control) ) return;
 
         switch (code)
         {

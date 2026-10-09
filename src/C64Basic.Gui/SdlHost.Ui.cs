@@ -20,7 +20,7 @@ static unsafe partial class SdlHost
         public Func<bool>? On { get; init; }
 
         /// <summary>The picture on the button (see <see cref="ToolIcons"/>); without one the label is shown as text.</summary>
-        public string[]? Icon { get; init; }
+        public string[]? Icon { get; set; }
 
         /// <summary>A character shown beside the picture (the port the joystick is on).</summary>
         public Func<string>? Suffix { get; init; }
@@ -54,6 +54,62 @@ static unsafe partial class SdlHost
         _selection = null;
         _selecting = false;
         _hover = _pressed = -1;
+    }
+
+    // ---------- volume ----------
+    // The SID's output is close to full scale at maximum volume, much louder than other programs, so what reaches the sound card is
+    // scaled down: 40 % to start with, in steps of 10 %, or --volume. Muting keeps the level.
+    /// <summary>The volume at start, in percent (<c>--volume</c>).</summary>
+    public static int VolumePercent { get; set; } = 40;
+
+    static volatile float _volumeGain = 0.4f;
+    static bool _muted;
+    static ToolButton? _muteButton;
+
+    static void ApplyVolume()
+    {
+        _volumeGain = _muted ? 0f : Math.Clamp(VolumePercent, 0, 100) / 100f;
+        if (_muteButton != null) _muteButton.Icon = _muted || VolumePercent == 0 ? ToolIcons.SpeakerMuted : ToolIcons.Speaker;
+    }
+
+    static void ChangeVolume(int step)
+    {
+        VolumePercent = Math.Clamp(VolumePercent + step, 0, 100);
+        if (VolumePercent > 0) _muted = false;
+        ApplyVolume();
+        _statusMessage = $"volume {VolumePercent}%";
+    }
+
+    static void ToggleMute()
+    {
+        _muted = !_muted;
+        ApplyVolume();
+        _statusMessage = _muted ? "sound off" : $"volume {VolumePercent}%";
+    }
+
+    static IEnumerable<ToolButton> VolumeButtons()
+    {
+        _muteButton = new ToolButton { Label = "MUTE", Icon = ToolIcons.Speaker, Hint = "sound on / off (Ctrl+M)", Click = ToggleMute, On = () => _muted };
+        ApplyVolume();
+        return new[]
+        {
+            _muteButton,
+            new ToolButton { Label = "VOL-", Icon = ToolIcons.VolumeDown, Hint = "quieter (Ctrl+Down)", Click = () => ChangeVolume(-10) },
+            new ToolButton { Label = "VOL+", Icon = ToolIcons.VolumeUp, Hint = "louder (Ctrl+Up)", Click = () => ChangeVolume(10) },
+        };
+    }
+
+    /// <summary>The volume keys: Ctrl+Up and Ctrl+Down, Ctrl+M. True when the key was one of them.</summary>
+    static bool VolumeKey(Scancode code, bool control)
+    {
+        if (!control) return false;
+        switch (code)
+        {
+            case Scancode.ScancodeUp: ChangeVolume(10); return true;
+            case Scancode.ScancodeDown: ChangeVolume(-10); return true;
+            case Scancode.ScancodeM: ToggleMute(); return true;
+            default: return false;
+        }
     }
 
     // ---------- the cursor keys as a joystick ----------

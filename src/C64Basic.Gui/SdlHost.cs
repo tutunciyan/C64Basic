@@ -9,7 +9,7 @@ using Silk.NET.SDL;
 namespace C64Basic.Gui;
 
 /// <summary>The window: SDL events in, the VIC-II frame and SID audio out. The interpreter runs on its own thread.</summary>
-static unsafe class SdlHost
+static unsafe partial class SdlHost
 {
     const int SampleRate = 44100;
 
@@ -310,7 +310,7 @@ static unsafe class SdlHost
         if (BeamAt(window, out int x, out int line)) _bus.Vic.LightPen(x, line);
     }
 
-    static void MouseMoved(Window* window, int x, int y, ScreenConsole console)
+    static void MouseMoved(Window* window, int x, int y, IGameInput console)
     {
         _mouseX = x; _mouseY = y;
         if (LightPen) return;
@@ -321,7 +321,7 @@ static unsafe class SdlHost
         console.SetPaddle(_keyboardPort, 1, y * 255 / height);
     }
 
-    static void MouseButton(MouseButtonEvent button, ScreenConsole console)
+    static void MouseButton(MouseButtonEvent button, IGameInput console)
     {
         if (LightPen)
         {

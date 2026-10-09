@@ -2,11 +2,21 @@ using C64Basic.Core.Machine;
 
 namespace C64Basic.Core.IO;
 
+/// <summary>The game ports as a host drives them: joystick directions and fire buttons per input source, and paddle positions.</summary>
+public interface IGameInput
+{
+    /// <summary>Sets what one input source (0 = the keyboard, 1-4 = gamepads, 6 = the mouse) holds on a joystick port (1 or 2).</summary>
+    void SetJoystick(int port, byte bits, int source = 0);
+
+    /// <summary>Sets a paddle position (0-255) for game port 1 or 2; axis 0 is POTX, 1 is POTY.</summary>
+    void SetPaddle(int port, int axis, int value);
+}
+
 /// <summary>
 /// What the host holds down: the keyboard matrix, joysticks, paddles and the RESTORE key, for the real keyboard scan of ROM mode
 /// to read through CIA 1. Thread-safe enough for a host that sets keys on one thread while the machine runs on another.
 /// </summary>
-public sealed class InputState : IInputDevice
+public sealed class InputState : IInputDevice, IGameInput
 {
     public const int JoystickSources = 8;
 

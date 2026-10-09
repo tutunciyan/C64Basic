@@ -59,3 +59,14 @@ and tick them off. Note the OS and the result.
 ## Files
 - [ ] `dotnet run --project src/C64Basic.Gui -- --disk test.d64` creates the image; `SAVE "X",8` then `LOAD "$",8`, `LIST` shows it.
 - [ ] Dropping a `.d64` onto the window mounts it and lists the directory; dropping a `.bas` or BASIC `.prg` loads and runs it.
+
+## ROM mode (`--rom-dir roms`, needs the ROM dumps)
+- [ ] The window opens as "C64 (ROM mode)" and shows the real boot: the RAM test (a blank screen for about 2 s), then the banner and `READY.` with a blinking cursor.
+- [ ] Typing works through the real keyboard scan: letters, digits, Shift+letter graphics, Shift+Alt switches the character set, Ctrl+1..8 and Alt+1..8 change the colour, the cursor keys, Home, Backspace and Insert.
+- [ ] `--disk some.d64`: `LOAD"$",8` then `LIST` shows the directory; `LOAD"NAME",8` and `RUN` run a program. Dropping another disk image on the window mounts it, and a second `LOAD"$",8` shows the new directory.
+- [ ] A game with a fast loader (`LOAD"*",8,1`) loads and runs; the title shows nothing odd while it does.
+- [ ] F9 toggles warp (title says so) and a loading game gets noticeably faster; F10 resets to the banner with the disk still mounted.
+- [ ] Esc is RUN/STOP, Page Down is RESTORE: Esc+Page Down breaks out of `10 GOTO 10`.
+- [ ] Ctrl+V pastes a line of BASIC; Ctrl+C copies the screen text.
+- [ ] Numpad is the joystick; `PRINT PEEK(56320)` shows 127 when idle on port 2 and a changed value while a numpad key is held.
+- [ ] `--rom-dir` with a missing folder or missing ROMs names what is missing and exits.

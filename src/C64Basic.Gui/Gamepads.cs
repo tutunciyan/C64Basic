@@ -32,10 +32,10 @@ sealed unsafe class Gamepads
     }
 
     readonly Sdl _sdl;
-    readonly ScreenConsole _console;
+    readonly IGameInput _console;
     readonly List<Pad> _pads = new();
 
-    public Gamepads(Sdl sdl, ScreenConsole console)
+    public Gamepads(Sdl sdl, IGameInput console)
     {
         _sdl = sdl;
         _console = console;

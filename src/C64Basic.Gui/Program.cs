@@ -3,6 +3,7 @@ using C64Basic.Core;
 using C64Basic.Core.Disk;
 using C64Basic.Core.IO;
 using C64Basic.Core.Machine;
+using C64Basic.Core.Rom;
 using C64Basic.Core.Runtime;
 using C64Basic.Gui;
 using Silk.NET.SDL;
@@ -27,6 +28,9 @@ const string Usage = """
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
+      --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
+                      the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
+                      copy protection work. Typing, the joystick and the mouse work as usual; no program file argument, tape or --strict
       -h, --help      show this help
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
@@ -40,7 +44,7 @@ int joyPort = 2;
 var sidModel = Sid.SidModel.Mos6581;
 string? stateFile = null;
 bool resume = false;
-string? program = null, tape = null, typeText = null, snapshot = null, chargen = null;
+string? program = null, tape = null, typeText = null, snapshot = null, chargen = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
 
 for (int i = 0; i < args.Length; i++)
@@ -91,6 +95,10 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length) { Console.Error.WriteLine("--chargen needs a ROM file"); return 2; }
             chargen = args[i];
             break;
+        case "--rom-dir":
+            if (++i >= args.Length) { Console.Error.WriteLine("--rom-dir needs a folder with the ROM dumps"); return 2; }
+            romDir = args[i];
+            break;
         case "--tape":
             if (++i >= args.Length) { Console.Error.WriteLine("--tape needs an image file"); return 2; }
             tape = args[i];
@@ -100,6 +108,30 @@ for (int i = 0; i < args.Length; i++)
             if (args[i].StartsWith('-')) { Console.Error.WriteLine($"Unknown option {args[i]}\n\n{Usage}"); return 2; }
             program = args[i];
             break;
+    }
+}
+
+if (romDir != null)
+{
+    if (program != null || tape != null || strict || resume || stateFile != null)
+    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape, --strict, --state or --resume (use --disk with a disk image)"); return 2; }
+    if (disks.Count > 1 || disks.Any(d => d.Device != 8))
+    { Console.Error.WriteLine("ROM mode has one drive, device 8: use a single --disk"); return 2; }
+    try
+    {
+        var roms = RomSet.Find(romDir);
+        foreach (string note in roms.Notes) Console.Error.WriteLine("ROM mode: " + note);
+        var machine = new RomMachine(roms);
+        machine.Bus.Sound.Model = sidModel;
+        if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
+        if (disks.Count == 1) machine.MountDisk(File.ReadAllBytes(disks[0].Path));
+        if (typeText != null) machine.Type(typeText);
+        return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast);
+    }
+    catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine(e.Message);
+        return 1;
     }
 }
 

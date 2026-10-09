@@ -175,6 +175,7 @@ public sealed class RomMachine
 
     void Feed()
     {
+        if (Bus.Ram[0x289] != 10) return;                    // the KERNAL has not set up its keyboard buffer yet (it would wipe the text)
         lock (_typed)
         {
             while (_typed.Count > 0 && Bus.Ram[0xC6] < 10)

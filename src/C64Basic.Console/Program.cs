@@ -2,6 +2,7 @@ using C64Basic.Console;
 using C64Basic.Core;
 using C64Basic.Core.Disk;
 using C64Basic.Core.IO;
+using C64Basic.Core.Rom;
 using C64Basic.Core.Runtime;
 
 const string Usage = """
@@ -20,12 +21,15 @@ const string Usage = """
                       Esc = RUN/STOP, Ctrl+D quits; no sound (use the GUI)
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
+      --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 instead of the built-in BASIC (needs the ROM
+                      dumps in <d>; draws the picture like --pixels, so it needs a terminal; --disk mounts a .d64 or .g64, --fast
+                      skips the C64 speed limit; no program file, tape, --plain or --strict)
       -h, --help      show this help
     """;
 
 bool strict = false, plain = false, fast = false, pixels = false;
 int? width = null;
-string? file = null;
+string? file = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
 string? tape = null;
 
@@ -53,6 +57,10 @@ for (int i = 0; i < args.Length; i++)
                 disks.Add((unit, spec));
                 break;
             }
+        case "--rom-dir":
+            if (++i >= args.Length) { System.Console.Error.WriteLine("--rom-dir needs a folder with the ROM dumps"); return 2; }
+            romDir = args[i];
+            break;
         case "--tape":
             if (++i >= args.Length) { System.Console.Error.WriteLine("--tape needs an image file"); return 2; }
             tape = args[i];
@@ -75,6 +83,39 @@ if (pixels && !PixelTerminal.Available)
     return 2;
 }
 
+if (romDir != null)
+{
+    if (!PixelTerminal.Available) { System.Console.Error.WriteLine("--rom-dir needs a terminal (input and output must not be redirected)"); return 2; }
+    if (file != null || tape != null || strict || plain || width != null)
+    { System.Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape, --plain, --width or --strict (use --disk with a disk image)"); return 2; }
+    if (disks.Count > 1 || disks.Any(d => d.Device != 8)) { System.Console.Error.WriteLine("ROM mode has one drive, device 8: use a single --disk"); return 2; }
+    RomMachine machine;
+    try
+    {
+        var roms = RomSet.Find(romDir);
+        foreach (string note in roms.Notes) System.Console.Error.WriteLine("ROM mode: " + note);
+        machine = new RomMachine(roms);
+        if (disks.Count == 1) machine.MountDisk(File.ReadAllBytes(disks[0].Path));
+    }
+    catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
+    {
+        System.Console.Error.WriteLine(e.Message);
+        return 1;
+    }
+    var source = new RomPixelSource(machine);
+    var romView = new PixelTerminal(source);
+    var machineThread = new Thread(() => machine.RunPaced(() => source.Quitting.IsSet, () => fast)) { IsBackground = true, Name = "C64 ROM mode" };
+    try
+    {
+        romView.Start();
+        machineThread.Start();
+        source.Quitting.Wait();
+        machineThread.Join(1000);
+        return 0;
+    }
+    finally { romView.Stop(); }
+}
+
 ScreenConsole? pixelConsole = pixels ? new ScreenConsole() : null;
 ConsoleDevice? device = pixels ? null : new ConsoleDevice(emulateScreen: !plain, width ?? 40);
 IConsoleDevice console = pixelConsole != null ? pixelConsole : plain ? new ShadowScreenConsole(device!) : device!;
@@ -93,7 +134,7 @@ catch (Exception e) when (e is IOException or InvalidDataException or Unauthoriz
 }
 var repl = new Repl(interpreter, console);
 
-PixelTerminal? view = pixelConsole != null ? new PixelTerminal(interpreter, pixelConsole) : null;
+PixelTerminal? view = pixelConsole != null ? new PixelTerminal(new InterpreterPixelSource(interpreter, pixelConsole)) : null;
 try
 {
     view?.Start();

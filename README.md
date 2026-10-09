@@ -2,6 +2,7 @@
 
 A Commodore 64 **BASIC V2** interpreter written in C# (.NET 10), with a few editing and tooling extensions.
 It interprets the language, and `SYS`/`USR` run machine code on a built-in 6502 core. There is no C64 ROM image: KERNAL and BASIC entry points are emulated in C#.
+An opt-in [ROM mode](#rom-mode-the-real-roms-and-a-real-1541) runs the real C64 ROMs beside a real 1541 instead, if you have ROM dumps.
 
 ```
 dotnet run --project src/C64Basic.Console                      # interactive READY. prompt
@@ -29,7 +30,7 @@ Press Ctrl+C to act as RUN/STOP.
 
 | Path | Contents |
 |---|---|
-| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, 6502 CPU, VIC-II, SID, CIA, colour RAM), `Repl` |
+| `src/C64Basic.Core` | the interpreter library: `Lexing`, `Parsing`, `Runtime`, `Editor`, `IO`, `Machine` (memory bus, 6502 CPU, VIC-II, SID, CIA, VIA, colour RAM, lockstep scheduler), `Rom` (ROM mode: the 1541, serial bus, disk mechanics, the whole machine), `Repl` |
 | `src/C64Basic.Console` | terminal front end (`IConsoleDevice` over `System.Console`) |
 | `src/C64Basic.Gui` | windowed front end on SDL2 (Silk.NET): VIC-II frames, SID audio, keyboard and joystick |
 | `tests/C64Basic.Tests` | xUnit tests; `Harness.cs` has a scripted console and in-memory file system |
@@ -218,9 +219,45 @@ A terminal never reports a key release, so each typed key is held on the key mat
 - Limits: the graphics are approximations of the real shapes. The mouse is the only paddle (one at a time, on the numpad's port); game
   controller triggers do not drive paddles.
 
+## ROM mode: the real ROMs and a real 1541
+
+The interpreter is a fast and friendly way to run BASIC, but it cannot run what needs the real machine: a **fast loader** that uploads its
+own code to the disk drive and races the serial bus, 1541 copy protection, programs that call KERNAL or BASIC routines this project
+does not emulate. ROM mode runs the actual thing instead: the C64's own BASIC and KERNAL ROMs on the 6502 (banked by the processor
+port, with the real interrupt handler, keyboard scan and serial bus routines), and beside it a 1541, a second 6502 running the DOS ROM
+with 2 KB of RAM and two 6522 VIAs, reading a disk image through a model of the head, the stepper, the motor and the GCR read channel.
+The interpreter stays the default; ROM mode is opt-in.
+
+```
+dotnet run --project src/C64Basic.Gui -- --rom-dir roms --disk game.g64     # then LOAD"*",8,1 and RUN
+dotnet run --project src/C64Basic.Console -- --rom-dir roms --disk game.d64 # in a terminal (the --pixels picture)
+```
+
+The ROM dumps are copyrighted and **not part of this project**; put them in a folder (git-ignored here as `roms/`). They are found by
+name or by size: the 8 KB BASIC ROM (`basic-901226-01.bin`), the 8 KB KERNAL (`kernal-901227-03.bin`, stock PAL), the 16 KB 1541 DOS ROM
+(`dos1541ii-251968-03.bin`, the 1541-II's DOS 2.6) and optionally the 4 KB character ROM (`chargen*.bin`, otherwise the built-in
+approximation is used). The checksum is only used to say which ROM it is. Tests that need the ROMs do nothing without them.
+
+What you get: the real boot (a RAM test, then the banner after about three seconds), BASIC V2 as Commodore wrote it, `LOAD`, `SAVE`,
+`OPEN` and the command channel through the real serial routines against the real DOS, D64 and G64 images (a G64 is the raw bit stream
+of every track, half-tracks and speed zones included), disk swaps, `RESTORE` and RUN/STOP+RESTORE, the joystick, paddles and light pen,
+and a keyboard that goes through the matrix (so Ctrl, the Commodore key and Shift behave like the real ones).
+
+How the two processors stay in step: the C64 (985248 Hz) and the drive (1 MHz) run in lockstep. The one whose next bus access, the data
+access in the last cycle of its next instruction, comes first takes the next step, so a store by one and a load by the other happen in
+the right order within a cycle. That is what a fast loader needs: the 1943 loader here sends two bits at a time with a window of a couple
+of microseconds, and only works when a released serial line rises about a microsecond late (a line is only pulled up by a resistor through
+the cable's capacitance), which the model has. A boot from a game image takes about a minute of emulated time, the same as the real
+machine, and `--fast` skips the speed limit.
+
+Known limits: a unit-for-unit chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
+and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and some undocumented opcodes are
+missing (the processor stops with a message in the title bar). The disk head reads at the speed each track was recorded at whatever the
+density bits say.
+
 ## Not implemented
 
-`USR` without a vector raises `?ILLEGAL QUANTITY`. Running code in the drive (`M-E`, so fast loaders and 1541 copy protection), turbo-tape formats and DOS errors beyond
+`USR` without a vector raises `?ILLEGAL QUANTITY`. Running code in the drive (`M-E`, so fast loaders and 1541 copy protection; ROM mode does that), turbo-tape formats and DOS errors beyond
 those listed are missing, as are any `POKE`/`PEEK` hardware registers not listed above. `PEEK` of screen RAM, colour RAM and the
 cursor (214/211) see printed text everywhere, including `--plain`, which keeps a hidden screen behind the text stream (typed input is not echoed into it).
 `LOAD`/`SAVE` without a device number use device 8 (the disk); with `--strict` they use device 1 (the tape) like a real C64.

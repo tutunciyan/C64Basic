@@ -1,9 +1,75 @@
 using System.Text;
 using C64Basic.Core.IO;
 using C64Basic.Core.Machine;
+using C64Basic.Core.Rom;
 using C64Basic.Core.Runtime;
 
 namespace C64Basic.Console;
+
+/// <summary>What <see cref="PixelTerminal"/> draws and feeds: a machine with a VIC-II picture and a way to type at it.</summary>
+interface IPixelSource
+{
+    Bus Bus { get; }
+
+    /// <summary>The blinking cursor the host has to draw itself (the interpreter has no real cursor); false when the picture has it.</summary>
+    bool CursorVisible { get; }
+    int CursorRow { get; }
+    int CursorColumn { get; }
+
+    /// <summary>Text typed in the terminal (a paste arrives as fast typing).</summary>
+    void TypeText(string text);
+
+    /// <summary>True when keys should also be held on the keyboard matrix, for programs that scan it.</summary>
+    bool HoldsKeysOnMatrix { get; }
+
+    void SetKey(int index, bool down);
+
+    /// <summary>The terminal's interrupt key (RUN/STOP).</summary>
+    void Break();
+
+    /// <summary>The user wants out.</summary>
+    void Quit();
+}
+
+/// <summary>The BASIC interpreter's screen: the picture comes from the VIC-II and the host draws the cursor.</summary>
+sealed class InterpreterPixelSource : IPixelSource
+{
+    readonly Interpreter _interpreter;
+    readonly ScreenConsole _screen;
+
+    public InterpreterPixelSource(Interpreter interpreter, ScreenConsole screen) { _interpreter = interpreter; _screen = screen; }
+
+    public Bus Bus => _interpreter.Bus;
+    public bool CursorVisible => _screen.CursorVisible;
+    public int CursorRow => _screen.CursorRow;
+    public int CursorColumn => _screen.CursorColumn;
+    public void TypeText(string text) => _screen.Inject(text);   // no ten-key limit
+    public bool HoldsKeysOnMatrix => true;
+    public void SetKey(int index, bool down) => _screen.SetKey(index, down);
+    public void Break() => _screen.BreakRequested = true;
+    public void Quit() => _screen.Close();
+}
+
+/// <summary>A <see cref="RomMachine"/>: its own KERNAL draws the cursor, and typed text goes into the keyboard buffer.</summary>
+sealed class RomPixelSource : IPixelSource
+{
+    readonly RomMachine _machine;
+
+    /// <summary>Set when the user asks to quit.</summary>
+    public ManualResetEventSlim Quitting { get; } = new(false);
+
+    public RomPixelSource(RomMachine machine) => _machine = machine;
+
+    public Bus Bus => _machine.Bus;
+    public bool CursorVisible => false;
+    public int CursorRow => 0;
+    public int CursorColumn => 0;
+    public void TypeText(string text) => _machine.Type(text);
+    public bool HoldsKeysOnMatrix => false;
+    public void SetKey(int index, bool down) => _machine.Input.SetKey(index, down);
+    public void Break() { }
+    public void Quit() => Quitting.Set();
+}
 
 /// <summary>
 /// Shows the real VIC-II picture in a terminal: every frame is shrunk to fit and drawn with upper half blocks in true colour, so
@@ -14,8 +80,7 @@ sealed class PixelTerminal
 {
     const int FramesPerSecond = 15;
 
-    readonly Interpreter _interpreter;
-    readonly ScreenConsole _screen;
+    readonly IPixelSource _source;
     readonly uint[] _frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
     uint[] _scaled = Array.Empty<uint>();
     uint[] _shown = Array.Empty<uint>();
@@ -23,11 +88,7 @@ sealed class PixelTerminal
     volatile bool _stop;
     Thread? _renderer, _keys;
 
-    public PixelTerminal(Interpreter interpreter, ScreenConsole screen)
-    {
-        _interpreter = interpreter;
-        _screen = screen;
-    }
+    public PixelTerminal(IPixelSource source) => _source = source;
 
     /// <summary>True when a terminal is attached on both ends, so there is something to draw on and read from.</summary>
     public static bool Available => !System.Console.IsOutputRedirected && !System.Console.IsInputRedirected;
@@ -36,7 +97,7 @@ sealed class PixelTerminal
     {
         C64Screen.EnableVirtualTerminal();
         System.Console.OutputEncoding = Encoding.UTF8;
-        System.Console.CancelKeyPress += (_, e) => { e.Cancel = true; _screen.BreakRequested = true; };
+        System.Console.CancelKeyPress += (_, e) => { e.Cancel = true; _source.Break(); };
         System.Console.Out.Write("\u001b[?25l\u001b[2J");   // hide the cursor, clear the screen
 
         _renderer = new Thread(RenderLoop) { IsBackground = true, Name = "pixel renderer" };
@@ -79,8 +140,8 @@ sealed class PixelTerminal
             _shown = new uint[_columns * _pixelRows];
         }
 
-        _interpreter.Bus.Vic.Render(_frame);
-        if (_screen.CursorVisible)
+        _source.Bus.Vic.Render(_frame);
+        if (_source.CursorVisible)
         {
             if (Environment.TickCount64 - blinkAt >= 400) { blinkOn = !blinkOn; blinkAt = Environment.TickCount64; }
             if (blinkOn) InvertCursor();
@@ -125,8 +186,8 @@ sealed class PixelTerminal
     /// <summary>The cursor is the character cell drawn in reverse, like in the GUI.</summary>
     void InvertCursor()
     {
-        int x0 = (Vic2.FrameWidth - Vic2.DisplayWidth) / 2 + _screen.CursorColumn * 8;
-        int y0 = (Vic2.FrameHeight - Vic2.DisplayHeight) / 2 + _screen.CursorRow * 8;
+        int x0 = (Vic2.FrameWidth - Vic2.DisplayWidth) / 2 + _source.CursorColumn * 8;
+        int y0 = (Vic2.FrameHeight - Vic2.DisplayHeight) / 2 + _source.CursorRow * 8;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
                 _frame[(y0 + y) * Vic2.FrameWidth + x0 + x] ^= 0x00FFFFFF;
@@ -153,11 +214,11 @@ sealed class PixelTerminal
     void Handle(ConsoleKeyInfo key)
     {
         string? text = ConsoleKeyMap.Translate(key, out bool quit, out bool stop);
-        if (quit) { _screen.Close(); return; }
-        if (stop) { _screen.BreakRequested = true; Hold(new[] { 63 }); return; }
+        if (quit) { _source.Quit(); return; }
+        if (stop) { _source.Break(); Hold(new[] { 63 }); return; }
         if (text == null) return;
-        _screen.Inject(text); // no ten-key limit: a terminal paste arrives as fast typing
-        foreach (char c in text) Press(c);
+        _source.TypeText(text);
+        if (_source.HoldsKeysOnMatrix) foreach (char c in text) Press(c);
     }
 
     // ---------- the key matrix ----------
@@ -176,7 +237,7 @@ sealed class PixelTerminal
     {
         long until = Environment.TickCount64 + HoldMilliseconds;
         lock (_held)
-            foreach (int key in keys) { _screen.SetKey(key, true); _held[key] = until; }
+            foreach (int key in keys) { _source.SetKey(key, true); _held[key] = until; }
     }
 
     void ReleaseDue()
@@ -187,7 +248,7 @@ sealed class PixelTerminal
             long now = Environment.TickCount64;
             foreach (int key in _held.Where(h => h.Value <= now).Select(h => h.Key).ToList())
             {
-                _screen.SetKey(key, false);
+                _source.SetKey(key, false);
                 _held.Remove(key);
             }
         }

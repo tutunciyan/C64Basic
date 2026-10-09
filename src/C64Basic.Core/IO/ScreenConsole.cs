@@ -10,7 +10,7 @@ namespace C64Basic.Core.IO;
 /// <see cref="Vic2.Render"/>. Typing, the cursor and RETURN behave like the real screen editor, including
 /// moving the cursor onto an old line and pressing RETURN to re-enter it.
 /// </summary>
-public sealed class ScreenConsole : IConsoleDevice, IInputDevice
+public sealed class ScreenConsole : IConsoleDevice, IInputDevice, IGameInput
 {
     /// <summary>The KERNAL keyboard buffer holds ten characters; further keystrokes are dropped.</summary>
     const int KeyBufferSize = 10;

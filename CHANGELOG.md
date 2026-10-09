@@ -4,6 +4,8 @@
 - The 6502 core runs on any memory map (`ICpuMemory`) and has a native mode with real vectors, interrupt lines, the SO pin and the
   cycle of every bus access; `Lockstep` keeps processors with different clocks (C64 985248 Hz, 1541 1 MHz) in step.
 - The 1541's computer: 6502 at 1 MHz, 2 KB RAM, the DOS ROM and two 6522 VIAs (timers, ports, handshake pins, interrupts).
+- The serial bus: CIA 2 and the drive's VIA 1 on three wired-AND lines, including the drive's automatic ATN acknowledge. The real DOS ROM boots
+  and answers on it (tested: status string, device number jumpers, error channel). ROM dumps are found in a folder by name or size and checked.
 
 # Changes since v0.1.0
 

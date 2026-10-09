@@ -79,6 +79,9 @@ public class Cia : IMemoryMapped
 
     /// <summary>The lines this port drives low (output pins whose latch is 0).</summary>
     protected byte DrivenLowA => (byte)(~Pra & Ddra);
+
+    /// <summary>Raised after a write to port A or its direction register (CIA 2's serial bus lines are driven from there).</summary>
+    public event Action? PortAChanged;
     protected byte DrivenLowB => (byte)(~Prb & Ddrb);
 
     /// <summary>What the CPU side drives on port A: output bits as written, input bits high.</summary>
@@ -324,9 +327,9 @@ public class Cia : IMemoryMapped
         int reg = (address - _start) & 15;
         switch (reg)
         {
-            case 0: Pra = value; break;
+            case 0: Pra = value; PortAChanged?.Invoke(); break;
             case 1: Prb = value; break;
-            case 2: Ddra = value; break;
+            case 2: Ddra = value; PortAChanged?.Invoke(); break;
             case 3: Ddrb = value; break;
             case 4: Sync(); _a.Latch = _a.Latch & 0xFF00 | value; break;
             case 5: Sync(); _a.Latch = _a.Latch & 0x00FF | value << 8; if (!_a.Running) _a.Counter = _a.Latch; break;
@@ -448,6 +451,11 @@ public sealed class Cia2 : Cia
     public byte UserPortOutput => (byte)(Prb & Ddrb | ~Ddrb);
 
     protected override byte PinsB() => UserPortInput;
+
+    /// <summary>The serial bus (ROM mode): PA6 and PA7 read the CLK and DATA lines. Without one they read high.</summary>
+    public Rom.IecBus? Iec { get; set; }
+
+    protected override byte PinsA() => Iec == null ? (byte)0xFF : (byte)(0x3F | (Iec.Clk ? 0x40 : 0) | (Iec.Data ? 0x80 : 0));
 
     public Cia2(Bus bus) : base(bus, Start)
     {

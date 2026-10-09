@@ -1,5 +1,9 @@
 # Unreleased
 
+**Window**
+- A toolbar above the picture in both windows (buttons for reset, warp, state, copy/paste, screenshot, full screen, and in ROM mode pause, disk
+  swap and tape), `--no-toolbar`, Ctrl+F12. Mouse text selection (Shift + drag copies, `ScreenSelection`) and middle-click paste.
+
 **Tests**
 - Tests that need the ROM dumps or a local game image (`[RomFact]`, `[GameFact]`) show as skipped, not passed, when those files are missing,
   so a CI run says how much it did not check.

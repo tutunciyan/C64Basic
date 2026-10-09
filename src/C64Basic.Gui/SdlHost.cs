@@ -68,12 +68,11 @@ static unsafe partial class SdlHost
 
         uint flags = (uint)WindowFlags.Resizable | (fullscreen ? (uint)WindowFlags.FullscreenDesktop : 0);
         var window = Sdl.CreateWindow("C64 BASIC", Sdl.WindowposCentered, Sdl.WindowposCentered,
-            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale, flags);
+            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? 16 : 0), flags);
         if (window == null) { Console.Error.WriteLine("No window: " + Sdl.GetErrorS()); return 1; }
 
         var renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Accelerated | (uint)RendererFlags.Presentvsync);
         if (renderer == null) renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Software);
-        Sdl.RenderSetLogicalSize(renderer, Vic2.FrameWidth, Vic2.FrameHeight);
         Sdl.SetHint(Sdl.HintRenderScaleQuality, "nearest");
         var texture = Sdl.CreateTexture(renderer, (uint)PixelFormatEnum.Argb8888, (int)TextureAccess.Streaming,
             Vic2.FrameWidth, Vic2.FrameHeight);
@@ -86,6 +85,17 @@ static unsafe partial class SdlHost
         if (resume) LoadState();
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
+        SetUp(new[]
+        {
+            new ToolButton { Label = "RESET", Hint = "reset the machine (F10)", Click = () => console.Inject("SYS64738\r") },
+            new ToolButton { Label = "WARP", Hint = "warp speed (F9)", Click = () => interpreter.Warp = !interpreter.Warp, On = () => interpreter.Warp },
+            new ToolButton { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = SaveState },
+            new ToolButton { Label = "LOAD", Hint = "load the machine state (Ctrl+L)", Click = LoadState },
+            new ToolButton { Label = "COPY", Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
+            new ToolButton { Label = "PASTE", Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
+            new ToolButton { Label = "SHOT", Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
+            new ToolButton { Label = "FULL", Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
+        }, console.ScreenRows, text => console.Paste(text));
         var joystick = (byte)0;
         bool running = true, blinkOn = true;
         long blinkAt = Environment.TickCount64, startedAt = Environment.TickCount64;
@@ -108,8 +118,12 @@ static unsafe partial class SdlHost
                     case EventType.Controlleraxismotion:
                         gamepads.Handle(e);
                         break;
-                    case EventType.Mousemotion: MouseMoved(window, e.Motion.X, e.Motion.Y, console); break;
-                    case EventType.Mousebuttondown or EventType.Mousebuttonup: MouseButton(e.Button, console); break;
+                    case EventType.Mousemotion:
+                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(window, e.Motion.X, e.Motion.Y, console);
+                        break;
+                    case EventType.Mousebuttondown or EventType.Mousebuttonup:
+                        if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, console);
+                        break;
                     case EventType.Dropfile: DropFile(e.Drop.File, interpreter, console); break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         console.ReleaseAllKeys();
@@ -145,10 +159,7 @@ static unsafe partial class SdlHost
             }
             else { blinkOn = true; blinkAt = Environment.TickCount64; }
 
-            fixed (uint* pixels = frame) Sdl.UpdateTexture(texture, null, pixels, Vic2.FrameWidth * sizeof(uint));
-            Sdl.RenderClear(renderer);
-            Sdl.RenderCopy(renderer, texture, null, null);
-            Sdl.RenderPresent(renderer);
+            Present(renderer, window, texture, frame);
             if ((Sdl.GetWindowFlags(window) & (uint)WindowFlags.Minimized) != 0) Sdl.Delay(50);
             else Sdl.Delay(1);
         }
@@ -193,6 +204,8 @@ static unsafe partial class SdlHost
         var mod = (Keymod)key.Keysym.Mod;
         bool shift = (mod & Keymod.Shift) != 0, control = (mod & Keymod.Ctrl) != 0, alt = (mod & Keymod.Alt) != 0;
         bool repeat = key.Repeat != 0;
+        if (!(control && code == Scancode.ScancodeC) && code is not (Scancode.ScancodeLshift or Scancode.ScancodeRshift or Scancode.ScancodeLctrl or Scancode.ScancodeRctrl)) ClearSelection();
+        if (code == Scancode.ScancodeF12 && control && !repeat) { ToolbarEnabled = !ToolbarEnabled; return true; }
 
         // emulator keys
         switch (code)
@@ -240,7 +253,7 @@ static unsafe partial class SdlHost
         }
         if (!repeat && control && code == Scancode.ScancodeC)
         {
-            Sdl.SetClipboardText(console.ScreenText());
+            CopyToClipboard();
             return true;
         }
 
@@ -291,17 +304,13 @@ static unsafe partial class SdlHost
 
     static int _mouseX, _mouseY;
 
-    /// <summary>Where a window position is in the picture, as the beam sees it: sprite X (frame x - 8) and the raster line (frame row + 15).</summary>
+    /// <summary>Where the pointer is in the picture, as the beam sees it: sprite X (frame x - 8) and the raster line (frame row + 15).</summary>
     static bool BeamAt(Window* window, out int x, out int line)
     {
-        int width, height;
-        Sdl.GetWindowSize(window, &width, &height);
-        double scale = Math.Min((double)width / Vic2.FrameWidth, (double)height / Vic2.FrameHeight);
-        double left = (width - Vic2.FrameWidth * scale) / 2, top = (height - Vic2.FrameHeight * scale) / 2;
-        int fx = (int)((_mouseX - left) / scale), fy = (int)((_mouseY - top) / scale);
+        bool inside = FramePoint(_mouseX, _mouseY, out int fx, out int fy);
         x = fx - 8;
         line = fy + 15;
-        return scale > 0 && fx >= 0 && fx < Vic2.FrameWidth && fy >= 0 && fy < Vic2.FrameHeight;
+        return inside;
     }
 
     /// <summary>A light pen strike for the frame being drawn while the button is down: the first one per frame latches.</summary>
@@ -312,13 +321,10 @@ static unsafe partial class SdlHost
 
     static void MouseMoved(Window* window, int x, int y, IGameInput console)
     {
-        _mouseX = x; _mouseY = y;
         if (LightPen) return;
-        int width, height;
-        Sdl.GetWindowSize(window, &width, &height);
-        if (width <= 0 || height <= 0) return;
-        console.SetPaddle(_keyboardPort, 0, x * 255 / width);
-        console.SetPaddle(_keyboardPort, 1, y * 255 / height);
+        FramePoint(_mouseX, _mouseY, out int fx, out int fy, clamp: true);
+        console.SetPaddle(_keyboardPort, 0, fx * 255 / (Vic2.FrameWidth - 1));
+        console.SetPaddle(_keyboardPort, 1, fy * 255 / (Vic2.FrameHeight - 1));
     }
 
     static void MouseButton(MouseButtonEvent button, IGameInput console)
@@ -384,6 +390,8 @@ static unsafe partial class SdlHost
     }
 
     // ---------- window ----------
+    static bool IsFullscreen(Window* window) => (Sdl.GetWindowFlags(window) & (uint)WindowFlags.FullscreenDesktop) != 0;
+
     static void ToggleFullscreen(Window* window)
     {
         bool full = (Sdl.GetWindowFlags(window) & (uint)WindowFlags.FullscreenDesktop) != 0;

@@ -139,11 +139,11 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice, IGameInput
         return sb.Length;
     }
 
-    /// <summary>The text on the screen, one line per row with trailing spaces and empty rows at the end removed (for copying).</summary>
-    public string ScreenText()
+    /// <summary>The 25 rows of the screen, 40 characters each (for selecting text).</summary>
+    public string[] ScreenRows()
     {
-        if (_editor == null) return "";
-        var rows = new List<string>();
+        var rows = new string[ScreenEditor.Rows];
+        if (_editor == null) { Array.Fill(rows, new string(' ', ScreenEditor.Columns)); return rows; }
         lock (_screenLock)
         {
             for (int r = 0; r < ScreenEditor.Rows; r++)
@@ -151,9 +151,17 @@ public sealed class ScreenConsole : IConsoleDevice, IInputDevice, IGameInput
                 var sb = new System.Text.StringBuilder(ScreenEditor.Columns);
                 for (int c = 0; c < ScreenEditor.Columns; c++)
                     sb.Append(Runtime.Petscii.ScreenGlyph(_screenBus!.Ram[ScreenEditor.ScreenRam + r * ScreenEditor.Columns + c]));
-                rows.Add(sb.ToString().TrimEnd(' '));
+                rows[r] = sb.ToString();
             }
         }
+        return rows;
+    }
+
+    /// <summary>The text on the screen, one line per row with trailing spaces and empty rows at the end removed (for copying).</summary>
+    public string ScreenText()
+    {
+        if (_editor == null) return "";
+        var rows = ScreenRows().Select(r => r.TrimEnd(' ')).ToList();
         while (rows.Count > 0 && rows[^1].Length == 0) rows.RemoveAt(rows.Count - 1);
         return string.Join("\n", rows);
     }

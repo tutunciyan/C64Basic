@@ -200,6 +200,12 @@ A terminal never reports a key release, so each typed key is held on the key mat
   while the window is open.
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
+- Toolbar and mouse: a toolbar of buttons runs along the top of the window (RESET, WARP, SAVE, LOAD, COPY, PASTE, SHOT, FULL; ROM mode adds
+  PAUSE, DISK-, DISK+, TAPE and REWIND), each with its key shown in the title bar while the pointer is over it, lit while a toggle is on. It
+  hides in full screen, `--no-toolbar` leaves it out and Ctrl+F12 switches it on and off. Shift + left drag picks text off the screen (the
+  picked cells are drawn inverted) and copies it when the button is let go; COPY and Ctrl+C copy the selection, or the whole screen if
+  nothing is picked; a middle click, PASTE, Ctrl+V and Shift+Insert type the clipboard. Without Shift the mouse is still the paddle (or the
+  light pen), and any key or an ordinary click drops the selection.
 - Machine state: Ctrl+S saves the whole machine (memory, VIC-II, SID and CIA registers, the BASIC program, variables, arrays, `DEF FN`
   functions, FOR/GOSUB stacks, the DATA pointer and the clock) to `c64-state.sav` (`--state <file>` changes the name) and Ctrl+L loads
   it; `--resume` loads it at startup and dropping a `.sav` file on the window loads that. A program that was running carries on

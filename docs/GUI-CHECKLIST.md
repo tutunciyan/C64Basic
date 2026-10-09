@@ -80,4 +80,9 @@ and tick them off. Note the OS and the result.
 - [ ] ROM mode, `--disk 8=a.d64 --disk 9=b.d64`: `LOAD"$",9` lists the second disk, and the title names `1541 #9` while it turns.
 - [ ] ROM mode, `--cart game.crt` (any normal, Ocean, Magic Desk or EasyFlash cartridge you own): the cartridge starts instead of the BASIC banner; dropping a `.crt` on the window resets into it.
 - [ ] ROM mode, `--reu 512` and a program that uses the REU (GEOS, a RAM disk driver, a demo): it finds 512 KB and works.
+- [ ] A toolbar runs along the top (RESET WARP SAVE LOAD COPY PASTE SHOT FULL; ROM mode also PAUSE DISK- DISK+ TAPE REWIND); the text is readable at the default size and bigger in a large window; hovering a button shows its hint in the title; WARP and PAUSE light up while on; clicking works (RESET resets, SHOT writes a `.bmp`).
+- [ ] The toolbar disappears in full screen (F11) and comes back; Ctrl+F12 hides and shows it; `--no-toolbar` starts without it; the picture keeps its proportions in a resized window, with the toolbar on or off.
+- [ ] Shift + left drag over the text selects it (inverted cells, also backwards and over several lines); on release the title says "copied N characters" and pasting elsewhere gives the text. An ordinary click or a key drops the highlight.
+- [ ] Middle click types the clipboard into the machine; COPY with nothing selected copies the whole screen.
+- [ ] The mouse still works as a paddle or light pen (no Shift), and a click on the toolbar does not fire the joystick.
 

@@ -30,12 +30,11 @@ static unsafe partial class SdlHost
 
         uint flags = (uint)WindowFlags.Resizable | (fullscreen ? (uint)WindowFlags.FullscreenDesktop : 0);
         var window = Sdl.CreateWindow("C64 (ROM mode)", Sdl.WindowposCentered, Sdl.WindowposCentered,
-            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale, flags);
+            Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? 16 : 0), flags);
         if (window == null) { Console.Error.WriteLine("No window: " + Sdl.GetErrorS()); return 1; }
 
         var renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Accelerated | (uint)RendererFlags.Presentvsync);
         if (renderer == null) renderer = Sdl.CreateRenderer(window, -1, (uint)RendererFlags.Software);
-        Sdl.RenderSetLogicalSize(renderer, Vic2.FrameWidth, Vic2.FrameHeight);
         Sdl.SetHint(Sdl.HintRenderScaleQuality, "nearest");
         var texture = Sdl.CreateTexture(renderer, (uint)PixelFormatEnum.Argb8888, (int)TextureAccess.Streaming,
             Vic2.FrameWidth, Vic2.FrameHeight);
@@ -53,6 +52,23 @@ static unsafe partial class SdlHost
         if (resume) LoadRomState(machine);
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
+        var buttons = new List<ToolButton>
+        {
+            new() { Label = "RESET", Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
+            new() { Label = "WARP", Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
+            new() { Label = "PAUSE", Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
+            new() { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = () => SaveRomState(machine) },
+            new() { Label = "LOAD", Hint = "load the machine state (Ctrl+L)", Click = () => LoadRomState(machine) },
+            new() { Label = "DISK-", Hint = "previous disk image in the folder (Ctrl+B)", Click = () => RomSwapDisk(machine, -1) },
+            new() { Label = "DISK+", Hint = "next disk image in the folder (Ctrl+N)", Click = () => RomSwapDisk(machine, 1) },
+            new() { Label = "TAPE", Hint = "tape PLAY / STOP (Ctrl+T)", Click = () => RomToggleTape(machine), On = () => machine.Tape.Active && machine.Tape.Play },
+            new() { Label = "REWIND", Hint = "rewind the tape (Ctrl+R)", Click = () => RomRewindTape(machine) },
+            new() { Label = "COPY", Hint = "copy the selection, or the screen (Ctrl+C)", Click = CopyToClipboard },
+            new() { Label = "PASTE", Hint = "type the clipboard (Ctrl+V, middle click)", Click = PasteFromClipboard },
+            new() { Label = "SHOT", Hint = "save a screenshot (F12)", Click = () => Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp") },
+            new() { Label = "FULL", Hint = "full screen (F11)", Click = () => ToggleFullscreen(window) },
+        };
+        SetUp(buttons, machine.ScreenRows, text => machine.Type(PasteText(text)));
         var joystick = (byte)0;
         long startedAt = Environment.TickCount64, titleAt = 0;
         string shownTitle = "";
@@ -74,8 +90,12 @@ static unsafe partial class SdlHost
                     case EventType.Controlleraxismotion:
                         gamepads.Handle(e);
                         break;
-                    case EventType.Mousemotion: MouseMoved(window, e.Motion.X, e.Motion.Y, machine.Input); break;
-                    case EventType.Mousebuttondown or EventType.Mousebuttonup: MouseButton(e.Button, machine.Input); break;
+                    case EventType.Mousemotion:
+                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(window, e.Motion.X, e.Motion.Y, machine.Input);
+                        break;
+                    case EventType.Mousebuttondown or EventType.Mousebuttonup:
+                        if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, machine.Input);
+                        break;
                     case EventType.Dropfile: RomDropFile(e.Drop.File, machine); break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         machine.Input.ReleaseAllKeys();
@@ -112,10 +132,7 @@ static unsafe partial class SdlHost
                 running = false;
             }
 
-            fixed (uint* pixels = frame) Sdl.UpdateTexture(texture, null, pixels, Vic2.FrameWidth * sizeof(uint));
-            Sdl.RenderClear(renderer);
-            Sdl.RenderCopy(renderer, texture, null, null);
-            Sdl.RenderPresent(renderer);
+            Present(renderer, window, texture, frame);
             if ((Sdl.GetWindowFlags(window) & (uint)WindowFlags.Minimized) != 0) Sdl.Delay(50);
             else Sdl.Delay(1);
         }
@@ -149,6 +166,8 @@ static unsafe partial class SdlHost
         var mod = (Keymod)key.Keysym.Mod;
         bool shift = (mod & Keymod.Shift) != 0, control = (mod & Keymod.Ctrl) != 0, alt = (mod & Keymod.Alt) != 0;
         bool repeat = key.Repeat != 0;
+        if (!(control && code == Scancode.ScancodeC) && code is not (Scancode.ScancodeLshift or Scancode.ScancodeRshift or Scancode.ScancodeLctrl or Scancode.ScancodeRctrl)) ClearSelection();
+        if (code == Scancode.ScancodeF12 && control && !repeat) { ToolbarEnabled = !ToolbarEnabled; return; }
 
         switch (code)
         {
@@ -166,8 +185,7 @@ static unsafe partial class SdlHost
                 Screenshot(frame, $"c64-{DateTime.Now:yyyyMMdd-HHmmss}.bmp");
                 return;
             case Scancode.ScancodeScrolllock when !repeat:
-                machine.Paused = !machine.Paused;
-                _statusMessage = machine.Paused ? "paused: " + machine.Registers() : "running";
+                RomTogglePause(machine);
                 return;
             case Scancode.ScancodePagedown:
                 machine.Input.SetRestore(true);
@@ -180,51 +198,19 @@ static unsafe partial class SdlHost
                 return;
         }
 
-        if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB)
-        {
-            int step = code == Scancode.ScancodeN ? 1 : -1;
-            machine.Post(() =>
-            {
-                try
-                {
-                    string? path = machine.SwapDisk(step);
-                    _statusMessage = path != null ? "disk swapped: " + Path.GetFileName(path) : "no other disk image next to the mounted one";
-                }
-                catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
-            });
-            return;
-        }
-        if (!repeat && control && code == Scancode.ScancodeT)
-        {
-            machine.Post(() =>
-            {
-                if (!machine.Tape.Active) { _statusMessage = "no tape mounted (--tape, or drop a .tap on the window)"; return; }
-                if (machine.Tape.Play) machine.StopTape(); else machine.PlayTape();
-                _statusMessage = machine.Tape.Play ? "tape: PLAY" : "tape: STOP";
-            });
-            return;
-        }
-        if (!repeat && control && code == Scancode.ScancodeR)
-        {
-            machine.Post(() =>
-            {
-                if (!machine.Tape.Active) { _statusMessage = "no tape mounted"; return; }
-                machine.Tape.Rewind();
-                _statusMessage = "tape rewound";
-            });
-            return;
-        }
+        if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB) { RomSwapDisk(machine, code == Scancode.ScancodeN ? 1 : -1); return; }
+        if (!repeat && control && code == Scancode.ScancodeT) { RomToggleTape(machine); return; }
+        if (!repeat && control && code == Scancode.ScancodeR) { RomRewindTape(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeS) { SaveRomState(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeL) { LoadRomState(machine); return; }
         if (!repeat && ((control && code == Scancode.ScancodeV) || (shift && code == Scancode.ScancodeInsert)))
         {
-            string? text = Sdl.GetClipboardTextS();
-            if (!string.IsNullOrEmpty(text)) machine.Type(PasteText(text));
+            PasteFromClipboard();
             return;
         }
         if (!repeat && control && code == Scancode.ScancodeC)
         {
-            Sdl.SetClipboardText(machine.ScreenText());
+            CopyToClipboard();
             return;
         }
 
@@ -239,6 +225,40 @@ static unsafe partial class SdlHost
         if (!repeat && KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) machine.Input.SetKey(k, true);
     }
+
+    // ---------- what the keys and the toolbar both do ----------
+    static void RomTogglePause(RomMachine machine)
+    {
+        machine.Paused = !machine.Paused;
+        _statusMessage = machine.Paused ? "paused: " + machine.Registers() : "running";
+    }
+
+    static void RomSwapDisk(RomMachine machine, int step) =>
+        machine.Post(() =>
+        {
+            try
+            {
+                string? path = machine.SwapDisk(step);
+                _statusMessage = path != null ? "disk swapped: " + Path.GetFileName(path) : "no other disk image next to the mounted one";
+            }
+            catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+        });
+
+    static void RomToggleTape(RomMachine machine) =>
+        machine.Post(() =>
+        {
+            if (!machine.Tape.Active) { _statusMessage = "no tape mounted (--tape, or drop a .tap on the window)"; return; }
+            if (machine.Tape.Play) machine.StopTape(); else machine.PlayTape();
+            _statusMessage = machine.Tape.Play ? "tape: PLAY" : "tape: STOP";
+        });
+
+    static void RomRewindTape(RomMachine machine) =>
+        machine.Post(() =>
+        {
+            if (!machine.Tape.Active) { _statusMessage = "no tape mounted"; return; }
+            machine.Tape.Rewind();
+            _statusMessage = "tape rewound";
+        });
 
     static void RomKeyUp(KeyboardEvent key, RomMachine machine, ref byte joystick)
     {

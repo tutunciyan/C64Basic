@@ -302,18 +302,25 @@ public sealed class RomMachine
     // ---------- the screen ----------
     public const int Columns = 40, Rows = 25;
 
-    /// <summary>The text on the screen, one line per row, trailing spaces and empty rows at the end removed.</summary>
-    public string ScreenText()
+    /// <summary>The 25 rows of the screen, 40 characters each (for selecting text).</summary>
+    public string[] ScreenRows()
     {
         int baseAddress = Bus.Ram[0x288] << 8;               // the KERNAL's pointer to the screen memory page
         if (baseAddress == 0) baseAddress = 0x400;
-        var rows = new List<string>();
+        var rows = new string[Rows];
         for (int r = 0; r < Rows; r++)
         {
             var sb = new System.Text.StringBuilder(Columns);
             for (int c = 0; c < Columns; c++) sb.Append(Petscii.ScreenGlyph(Bus.Ram[baseAddress + r * Columns + c]));
-            rows.Add(sb.ToString().TrimEnd(' '));
+            rows[r] = sb.ToString();
         }
+        return rows;
+    }
+
+    /// <summary>The text on the screen, one line per row, trailing spaces and empty rows at the end removed.</summary>
+    public string ScreenText()
+    {
+        var rows = ScreenRows().Select(r => r.TrimEnd(' ')).ToList();
         while (rows.Count > 0 && rows[^1].Length == 0) rows.RemoveAt(rows.Count - 1);
         return string.Join("\n", rows);
     }

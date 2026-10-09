@@ -23,6 +23,7 @@ const string Usage = """
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (in ROM mode: a datasette with PLAY pressed, the real KERNAL reads the pulses)
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
+      --no-toolbar    leave out the toolbar above the picture (Ctrl+F12 switches it on and off)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
@@ -88,6 +89,7 @@ for (int i = 0; i < args.Length; i++)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
         case "--lightpen": SdlHost.LightPen = true; break;
+        case "--no-toolbar": SdlHost.ToolbarEnabled = false; break;
         case "--sid":
             if (++i >= args.Length || args[i] is not ("6581" or "8580"))
             { Console.Error.WriteLine("--sid needs 6581 or 8580"); return 2; }

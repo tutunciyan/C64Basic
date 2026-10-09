@@ -4,6 +4,8 @@
 - The VIC-II stalls the processor cycle by cycle (BA/AEC) instead of adding the stolen cycles after the instruction: a read waits while BA
   is low (bad line: cycles 12-54, sprites: three cycles before to the end of their fetch), writes go through for three cycles, and the wait is
   in the instruction's own time, so what it reads after the wait is read late. Raster-exact code (stable raster, FLI) sees the real jitter.
+- `GameCorpusTests`: real game images from `roms/games` (1943, International Karate Plus, Ms. Pac-Man) are loaded and started in ROM mode,
+  and every image there has its directory listed. The tests skip where the images are not.
 - Saved states are taken as of the processor's clock (a CIA timer was one cycle early after a load).
 
 # 0.3.0

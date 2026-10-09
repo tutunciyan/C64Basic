@@ -271,6 +271,11 @@ the cable's capacitance), which the model has: 1.2 microseconds, and anything fr
 not. If a fast loader that works on a real machine fails here, `--iec-rise` is the knob to try. A boot from a game image takes about a
 minute of emulated time, the same as the real machine, and `--fast` skips the speed limit.
 
+Games are tested against real images kept in `roms/games` (git-ignored, copyrighted, so the tests skip on a machine without them): `GameCorpusTests`
+loads every `.d64`, `.g64`, `.t64` and `.prg` there and lists its directory, and runs the ones it knows by name to their title screen. Known to work:
+1943 (a G64 with a drive-code fast loader), International Karate Plus (a D64, a 200-block KERNAL load, then the cracker's raster-bar intro and menu)
+and Ms. Pac-Man (a T64, put on a blank disk). To add a game, drop the image there and add a row to that file.
+
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
 and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
 The disk head reads and writes at the speed each track was recorded at, whatever the density bits say, a G64's per-byte speed tables

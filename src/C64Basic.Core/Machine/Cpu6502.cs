@@ -179,9 +179,61 @@ public sealed class Cpu6502
 
         int op = Fetch();
         int cycles = BaseCycles[op];
-        if (cycles == 0) { StopReason = CpuStop.IllegalOpcode; PC = (PC - 1) & 0xFFFF; return; }
+        if (cycles == 0)
+        {
+            if (Native && UnstableCycles.TryGetValue(op, out int unstable)) { Cycles += unstable; ExecuteUnstable(op); return; }
+            StopReason = CpuStop.IllegalOpcode;
+            PC = (PC - 1) & 0xFFFF;
+            return;
+        }
         Cycles += cycles;
         Execute(op);
+    }
+
+    // ---------- the unstable undocumented opcodes (native mode only) ----------
+    // Copy protection and some demos use them. Their results depend on analogue effects; these are the values most emulators
+    // (and the C64's 6510 at room temperature) agree on, with the usual "magic" constant $EE for the two that take one.
+    static readonly Dictionary<int, int> UnstableCycles = new()
+    {
+        [0x8B] = 2, [0xAB] = 2, [0x9F] = 5, [0x93] = 6, [0x9B] = 5, [0x9C] = 5, [0x9E] = 5, [0xBB] = 4,
+    };
+
+    void ExecuteUnstable(int op)
+    {
+        switch (op)
+        {
+            case 0x8B: { int m = Fetch(); A = (byte)((A | 0xEE) & X & m); SetNZ(A); break; }              // XAA #imm
+            case 0xAB: { int m = Fetch(); A = X = (byte)((A | 0xEE) & m); SetNZ(A); break; }              // LAX #imm
+            case 0x9F: StoreAnded(Absolute(), Y, A & X); break;                                          // AHX abs,Y
+            case 0x93:                                                                                   // AHX (zp),Y
+                {
+                    int z = Fetch();
+                    StoreAnded(Rd(z) | Rd((z + 1) & 0xFF) << 8, Y, A & X);
+                    break;
+                }
+            case 0x9B: SP = (byte)(A & X); StoreAnded(Absolute(), Y, SP); break;                         // TAS abs,Y
+            case 0x9C: StoreAnded(Absolute(), X, Y); break;                                              // SHY abs,X
+            case 0x9E: StoreAnded(Absolute(), Y, X); break;                                              // SHX abs,Y
+            default:                                                                                     // LAS abs,Y
+                {
+                    int v = Rd(AbsoluteIndexed(Y, true)) & SP;
+                    A = X = SP = (byte)v;
+                    SetNZ(v);
+                    break;
+                }
+        }
+    }
+
+    /// <summary>
+    /// The store of SHA, SHX, SHY and TAS: the value is ANDed with the high byte of the address plus one, and when the indexing
+    /// crosses a page that value also becomes the high byte of the address written to.
+    /// </summary>
+    void StoreAnded(int baseAddress, int index, int value)
+    {
+        int address = (baseAddress + index) & 0xFFFF;
+        int stored = value & ((baseAddress >> 8) + 1) & 0xFF;
+        if ((address & 0xFF00) != (baseAddress & 0xFF00)) address = stored << 8 | address & 0xFF;
+        Wr(address, stored);
     }
 
     // ---------- native mode ----------
@@ -204,7 +256,9 @@ public sealed class Cpu6502
     {
         get
         {
-            int length = BaseCycles[_mem.Read(PC & 0xFFFF)];
+            int op = _mem.Read(PC & 0xFFFF);
+            int length = BaseCycles[op];
+            if (length == 0 && Native) UnstableCycles.TryGetValue(op, out length);
             return Cycles + (length == 0 ? 1 : length) - 1;
         }
     }

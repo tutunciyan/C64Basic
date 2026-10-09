@@ -182,6 +182,94 @@ public class NativeCpuTests
     }
 
     [Fact]
+    public void TheUnstableImmediateOpcodesUseTheMagicConstant()
+    {
+        var (cpu, _) = Machine("AB FF");                       // LAX #$FF
+        cpu.A = 0x00;
+        long start = cpu.Cycles;
+        cpu.StepNative();
+        Assert.Equal(0xEE, cpu.A);                             // (A | $EE) & $FF
+        Assert.Equal(0xEE, cpu.X);
+        Assert.True(cpu.GetFlag(Cpu6502.FlagN));
+        Assert.Equal(2, cpu.Cycles - start);
+
+        (cpu, _) = Machine("8B FF");                           // XAA #$FF
+        cpu.A = 0x11; cpu.X = 0xF3;
+        cpu.StepNative();
+        Assert.Equal(0xF3, cpu.A);                             // (A | $EE) & X & $FF
+    }
+
+    [Fact]
+    public void TheStoresThatAndWithTheHighByteTakeFiveCyclesAndMaskTheValue()
+    {
+        var (cpu, ram) = Machine("9C 00 12");                  // SHY $1200,X
+        cpu.Y = 0xFF; cpu.X = 0;
+        long start = cpu.Cycles;
+        cpu.StepNative();
+        Assert.Equal(0x13, ram.Data[0x1200]);                  // Y & (high byte + 1)
+        Assert.Equal(5, cpu.Cycles - start);
+
+        (cpu, ram) = Machine("9E 00 12");                      // SHX $1200,Y
+        cpu.X = 0xFF; cpu.Y = 0;
+        cpu.StepNative();
+        Assert.Equal(0x13, ram.Data[0x1200]);
+
+        (cpu, ram) = Machine("9F 00 12");                      // AHX $1200,Y
+        cpu.A = 0xFF; cpu.X = 0x0F; cpu.Y = 0;
+        cpu.StepNative();
+        Assert.Equal(0x03, ram.Data[0x1200]);                  // A & X & $13
+    }
+
+    [Fact]
+    public void WhenTheIndexCrossesAPageTheMaskedValueBecomesTheHighByteOfTheAddress()
+    {
+        var (cpu, ram) = Machine("9E F0 12");                  // SHX $12F0,Y with Y = $20: crosses into $13xx
+        cpu.X = 0x07; cpu.Y = 0x20;
+        cpu.StepNative();
+        Assert.Equal(0x03, ram.Data[0x0310]);                  // X & $13 = 3, so the address is $0310, not $1310
+        Assert.Equal(0, ram.Data[0x1310]);
+    }
+
+    [Fact]
+    public void TasAndLasWorkOnTheStackPointer()
+    {
+        var (cpu, ram) = Machine("9B 00 12");                  // TAS $1200,Y
+        cpu.A = 0xF0; cpu.X = 0x3C; cpu.Y = 0;
+        cpu.StepNative();
+        Assert.Equal(0x30, cpu.SP);                            // A & X
+        Assert.Equal(0x10, ram.Data[0x1200]);                  // SP & $13
+
+        (cpu, ram) = Machine("BB 00 03");                      // LAS $0300,Y
+        ram.Data[0x300] = 0xF0;
+        cpu.SP = 0x3C; cpu.Y = 0;
+        cpu.StepNative();
+        Assert.Equal(0x30, cpu.A);
+        Assert.Equal(0x30, cpu.X);
+        Assert.Equal(0x30, cpu.SP);
+    }
+
+    [Fact]
+    public void AHxIndirectIndexedStoresThroughThePointer()
+    {
+        var (cpu, ram) = Machine("93 40");                     // AHX ($40),Y
+        ram.Data[0x40] = 0x00; ram.Data[0x41] = 0x12;
+        cpu.A = 0xFF; cpu.X = 0x0F; cpu.Y = 0x05;
+        long start = cpu.Cycles;
+        cpu.StepNative();
+        Assert.Equal(0x03, ram.Data[0x1205]);
+        Assert.Equal(6, cpu.Cycles - start);
+    }
+
+    [Fact]
+    public void TheInterpretersProcessorStillRefusesTheUnstableOpcodes()
+    {
+        var bus = new Bus();
+        var cpu = new Cpu6502(bus);
+        bus.Ram[0x200] = 0xAB; bus.Ram[0x201] = 0xFF;
+        Assert.Equal(CpuStop.IllegalOpcode, cpu.Call(0x200));
+    }
+
+    [Fact]
     public void CallIsNotForNativeProcessors() =>
         Assert.Throws<InvalidOperationException>(() => new Cpu6502(new Ram()).Call(0x600));
 

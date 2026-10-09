@@ -238,8 +238,8 @@ public class NativeCpuTests
         var (a, _) = Machine("EE 00 D0 4C 00 06", mailbox: mailbox);                       // INC $D000 : JMP $0600
         var (b, bRam) = Machine("AD 00 D0 8D 00 03 4C 00 06", mailbox: mailbox);           // LDA $D000 : STA $0300 : JMP $0600
         new Lockstep(new CpuMember(a, 985248), new CpuMember(b, 1000000)).RunUntil(0.01);
-        Assert.InRange(a.Cycles, 9852, 9852 + 10);
-        Assert.InRange(b.Cycles, 10000, 10000 + 10);
+        Assert.InRange(a.Cycles, 9852 - 10, 9852 + 10);
+        Assert.InRange(b.Cycles, 10000 - 10, 10000 + 10);
         Assert.InRange((mailbox[0] - bRam.Data[0x300]) & 0xFF, 0, 2);
         Assert.True(mailbox[0] != 0);
     }

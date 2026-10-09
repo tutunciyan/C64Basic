@@ -37,8 +37,11 @@ public sealed class Drive1541 : ILockstepMember
         Via2.PortBChanged += Mechanics.PortBChanged;
     }
 
-    /// <summary>Puts a disk in the drive (or takes it out with null).</summary>
-    public void InsertDisk(GcrDisk? disk) => Mechanics.Insert(disk);
+    /// <summary>
+    /// Puts a disk in the drive (or takes it out with null). Unless <paramref name="swap"/> is false the write-protect sensor flickers
+    /// for a moment, as it does when a disk is pushed in, which is how the DOS notices that the disk is a different one.
+    /// </summary>
+    public void InsertDisk(GcrDisk? disk, bool swap = true) => Mechanics.Insert(disk, swap);
 
     /// <summary>Power on: the VIAs are cleared and the processor starts at the reset vector in the ROM.</summary>
     public void Reset()

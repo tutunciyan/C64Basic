@@ -60,10 +60,20 @@ public sealed class DiskMechanics
     /// <summary>Bytes read so far (for tests and for a drive-activity indicator).</summary>
     public long BytesRead { get; private set; }
 
-    public void Insert(GcrDisk? disk)
+    long _sensorBlockedUntil = long.MinValue;
+
+    /// <summary>
+    /// How long the write-protect sensor is covered while a disk is pushed in or pulled out, in drive cycles. The DOS only
+    /// notices that the disk was changed because this sensor flickers, so a swap has to look like one.
+    /// </summary>
+    const long SwapCycles = 300_000;
+
+    public void Insert(GcrDisk? disk, bool swap = true)
     {
-        AdvanceTo(_drive.Cpu.AccessCycle);
+        long now = _drive.Cpu.AccessCycle;
+        AdvanceTo(now);
         _disk = disk;
+        if (swap) _sensorBlockedUntil = now + SwapCycles;
         SelectTrack(_slot, keepAngle: false);
     }
 
@@ -85,7 +95,7 @@ public sealed class DiskMechanics
     {
         AdvanceTo(_drive.Cpu.AccessCycle);
         int pins = 0x6F;
-        if (_disk == null || !_disk.WriteProtected) pins |= 0x10;
+        if (_drive.Cpu.AccessCycle >= _sensorBlockedUntil && (_disk == null || !_disk.WriteProtected)) pins |= 0x10;
         if (!_sync) pins |= 0x80;
         return (byte)pins;
     }

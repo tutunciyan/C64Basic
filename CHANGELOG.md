@@ -9,6 +9,11 @@
 - Disk mechanics: the stepper (half-tracks, a stop at each edge), the motor and a read channel that turns the GCR bit stream of a G64 (or a
   D64 encoded as one) into data bytes, SYNC and byte-ready (V flag and CA1) at the speed of each zone. The real DOS reads directories and
   multi-sector files through it, and a G64 game image's directory.
+- `RomMachine`: the real BASIC and KERNAL ROMs on the 6502 (banked by the processor port, real IRQ, keyboard scan, serial routines) beside a
+  real 1541, in lockstep ordered by the cycle of each processor's next bus access. It boots to READY, runs BASIC, lists a directory and loads
+  programs over the serial bus, and a game with a drive-code fast loader (a G64 of 1943) loads and runs. Released serial lines rise a
+  microsecond late, as on a real cable; fast loaders' timing windows need that. Swapping a disk flickers the write-protect sensor so the
+  DOS notices.
 
 # Changes since v0.1.0
 

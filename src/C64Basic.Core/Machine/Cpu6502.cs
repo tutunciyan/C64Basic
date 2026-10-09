@@ -53,6 +53,9 @@ public sealed class Cpu6502
     /// </summary>
     public bool Native { get; }
 
+    /// <summary>A debugging hook called before every native step (to trace the program counter, or stop at an address).</summary>
+    public Action<Cpu6502>? BeforeStep { get; set; }
+
     /// <summary>The (level-triggered) IRQ line in native mode.</summary>
     public Func<bool>? IrqLine { get; set; }
 
@@ -193,6 +196,22 @@ public sealed class Cpu6502
         Cycles += 7;
     }
 
+    /// <summary>
+    /// The cycle at which the next instruction makes its data access (its last cycle), judged from the opcode alone: a page
+    /// crossing is not counted. Used by the scheduler to order two processors by what they do on the bus, not by when they start.
+    /// </summary>
+    public long NextAccessCycle
+    {
+        get
+        {
+            int length = BaseCycles[_mem.Read(PC & 0xFFFF)];
+            return Cycles + (length == 0 ? 1 : length) - 1;
+        }
+    }
+
+    /// <summary>The byte at the program counter (for a message about where the processor stopped).</summary>
+    public int PeekOpcode() => _mem.Read(PC & 0xFFFF);
+
     /// <summary>The SO pin: a falling edge sets the V flag (the 1541's gate array does this when a byte has been read from the disk).</summary>
     public void SetOverflow() => P |= FlagV;
 
@@ -202,6 +221,7 @@ public sealed class Cpu6502
     /// </summary>
     public void StepNative()
     {
+        BeforeStep?.Invoke(this);
         AccessCycle = Cycles;                                  // the lines are sampled at the start of the step
         bool nmi = NmiLine?.Invoke() ?? false;
         bool edge = nmi && !_nmiActive;

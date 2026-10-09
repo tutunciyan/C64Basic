@@ -67,6 +67,9 @@ public class Cia : IMemoryMapped
 
     long Now() => (long)(Bus.Seconds() * ClockHz);
 
+    /// <summary>The bus clock in seconds as the chip sees it now.</summary>
+    internal double BusSeconds => Bus.Seconds();
+
     /// <summary>True while an enabled interrupt source has fired; the CPU's IRQ (CIA 1) or NMI (CIA 2) line.</summary>
     public bool InterruptPending
     {
@@ -392,6 +395,33 @@ public class Cia : IMemoryMapped
         _lastCycle = Now();
     }
 
+    /// <summary>
+    /// The state of a chip that has just been powered on, for ROM mode where the real KERNAL sets everything up itself: all
+    /// registers clear, both timers stopped with their latches at $FFFF, no interrupt sources enabled.
+    /// </summary>
+    public void PowerOn()
+    {
+        Pra = Prb = Ddra = Ddrb = 0;
+        _sdr = _flags = _mask = 0;
+        foreach (var t in new[] { _a, _b })
+        {
+            t.Latch = t.Counter = 0xFFFF;
+            t.Control = 0;
+            t.Toggle = false;
+            t.LastUnderflow = long.MinValue / 2;
+        }
+        _shifting = false;
+        _shiftUnderflows = 0;
+        CntHigh = true;
+        Array.Clear(_alarm);
+        _todBase = 0;
+        _todStopped = false;
+        _todLatched = false;
+        _todChecked = -1;
+        _todAt = Bus.Seconds();
+        _lastCycle = Now();
+    }
+
     /// <summary>Power-on state the KERNAL leaves behind; subclasses refine it.</summary>
     protected void SetDefaults(int timerALatch, bool startTimerA, byte mask)
     {
@@ -455,7 +485,12 @@ public sealed class Cia2 : Cia
     /// <summary>The serial bus (ROM mode): PA6 and PA7 read the CLK and DATA lines. Without one they read high.</summary>
     public Rom.IecBus? Iec { get; set; }
 
-    protected override byte PinsA() => Iec == null ? (byte)0xFF : (byte)(0x3F | (Iec.Clk ? 0x40 : 0) | (Iec.Data ? 0x80 : 0));
+    protected override byte PinsA()
+    {
+        if (Iec == null) return 0xFF;
+        double now = BusSeconds;
+        return (byte)(0x3F | (Iec.ClkAt(now) ? 0x40 : 0) | (Iec.DataAt(now) ? 0x80 : 0));
+    }
 
     public Cia2(Bus bus) : base(bus, Start)
     {

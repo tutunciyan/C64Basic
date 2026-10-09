@@ -8,8 +8,9 @@ public class IecBusTests
 {
     static (Bus Bus, Drive1541 Drive, IecBus Iec) Setup(int device = 8)
     {
-        var bus = new Bus();
-        var drive = new Drive1541(new byte[Drive1541.RomSize]);
+        Drive1541? drive = null;
+        var bus = new Bus { Seconds = () => ((drive?.Cpu.AccessCycle ?? 0) + 0.5) / Drive1541.ClockHz };   // the drive's clock for both
+        drive = new Drive1541(new byte[Drive1541.RomSize]);
         var iec = new IecBus(bus.Cia2);
         iec.Attach(drive, device);
         bus.Cia2.Write(0xDD02, 0x3F);

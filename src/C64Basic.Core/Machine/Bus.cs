@@ -184,9 +184,45 @@ public sealed class Bus : ICpuMemory
         for (int a = start; a < start + length; a++) _chips[a - IoStart] = chip;
     }
 
-    bool Banked => (Ram[1] & 3) != 0;
-    bool IoVisible => Banked && (Ram[1] & 4) != 0;
-    bool CharRomVisible => Banked && (Ram[1] & 4) == 0;
+    // ---------- ROM mode ----------
+    byte[]? _basicRom, _kernalRom;
+
+    /// <summary>True when the real BASIC and KERNAL ROMs are in the memory map (see <see cref="EnableRomMode"/>).</summary>
+    public bool RomMode => _kernalRom != null;
+
+    /// <summary>
+    /// Puts the real BASIC (8 KB at $A000) and KERNAL (8 KB at $E000) ROMs in the memory map, switched by the processor port as on the
+    /// real machine, and takes the machine back to power-on: the RAM and the chips cleared, nothing set up. The processor port
+    /// ($00/$01) is then also real: pins whose direction bit is 0 are inputs and read as 1, so at reset all ROMs are visible.
+    /// </summary>
+    public void EnableRomMode(byte[] basic, byte[] kernal)
+    {
+        if (basic.Length != 8192) throw new ArgumentException("the BASIC ROM is 8192 bytes", nameof(basic));
+        if (kernal.Length != 8192) throw new ArgumentException("the KERNAL ROM is 8192 bytes", nameof(kernal));
+        _basicRom = (byte[])basic.Clone();
+        _kernalRom = (byte[])kernal.Clone();
+        PowerOn();
+    }
+
+    /// <summary>RAM and chips as at power-on (ROM mode only).</summary>
+    public void PowerOn()
+    {
+        Array.Clear(Ram);
+        Array.Clear(_io);
+        Array.Fill(Color.Data, (byte)14);
+        Cia1.PowerOn();
+        Cia2.PowerOn();
+    }
+
+    /// <summary>The three banking bits of the processor port as the memory map sees them (LORAM, HIRAM, CHAREN).</summary>
+    int Port => RomMode ? (Ram[1] & Ram[0] | ~Ram[0] & 7) & 7 : Ram[1] & 7;
+
+    /// <summary>What the processor reads at $01: output pins as written, input pins high.</summary>
+    int PortRead => Ram[1] & Ram[0] | ~Ram[0] & 0x37;
+
+    bool Banked => (Port & 3) != 0;
+    bool IoVisible => Banked && (Port & 4) != 0;
+    bool CharRomVisible => Banked && (Port & 4) == 0;
 
     static bool InIoArea(int address) => address >= IoStart && address < IoStart + IoLength;
 
@@ -196,6 +232,13 @@ public sealed class Bus : ICpuMemory
         {
             if (CharRomVisible) return CharacterRom[address - IoStart];
             if (IoVisible) return _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
+        }
+        if (_kernalRom != null)
+        {
+            if (address >= 0xE000) { if ((Port & 2) != 0) return _kernalRom[address - 0xE000]; }
+            else if (address >= 0xA000 && address < 0xC000) { if ((Port & 3) == 3) return _basicRom![address - 0xA000]; }
+            else if (address == 1) return (byte)PortRead;
+            return Ram[address];
         }
         if (Input != null && (address == 197 || address == 653)) return Keyboard.Read(Input, address);
         return Ram[address];

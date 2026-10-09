@@ -35,6 +35,7 @@ public sealed class IecHost
     public IecHost(byte[] dosRom, int device = 8)
     {
         Drive = new Drive1541(dosRom);
+        Bus.Seconds = () => (Drive.Cpu.AccessCycle + 0.5) / Drive1541.ClockHz;     // both sides read the drive's clock
         Iec = new IecBus(Bus.Cia2);
         Bus.Cia2.Write(0xDD02, 0x3F);        // PA0-5 outputs, PA6-7 inputs
         SetPins(atnLow: false, clkLow: false, dataLow: false);

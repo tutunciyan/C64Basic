@@ -20,7 +20,7 @@ public class DiskMechanicsTests
         drive.Reset();
         drive.Via2.Write(2, 0x6F);
         drive.Via2.Write(0, (byte)(motor ? 0x04 : 0x00));
-        drive.InsertDisk(disk);
+        drive.InsertDisk(disk, swap: false);
         return drive;
     }
 

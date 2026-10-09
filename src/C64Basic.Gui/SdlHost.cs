@@ -87,6 +87,7 @@ static unsafe partial class SdlHost
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         SetUp(new[]
         {
+            new ToolButton { Label = "OPEN", Hint = "pick a disk, tape, program or state file (Ctrl+O)", Click = AskForFile },
             new ToolButton { Label = "RESET", Hint = "reset the machine (F10)", Click = () => console.Inject("SYS64738\r") },
             new ToolButton { Label = "WARP", Hint = "warp speed (F9)", Click = () => interpreter.Warp = !interpreter.Warp, On = () => interpreter.Warp },
             new ToolButton { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = SaveState },
@@ -132,6 +133,8 @@ static unsafe partial class SdlHost
                         break;
                 }
             }
+
+            if (TakePickedFile() is { } picked) OpenFile(picked, interpreter, console);
 
             if (_statusMessage is { } message)
             {
@@ -239,6 +242,8 @@ static unsafe partial class SdlHost
                 console.SetKey(63, true);
                 return true;
         }
+
+        if (!repeat && control && code == Scancode.ScancodeO) { AskForFile(); return true; }
 
         // machine state: Ctrl+S saves, Ctrl+L loads
         if (!repeat && control && code == Scancode.ScancodeS) { SaveState(); return true; }
@@ -412,7 +417,12 @@ static unsafe partial class SdlHost
     {
         string? path = Marshal.PtrToStringUTF8((nint)file);
         Sdl.Free(file);
-        if (path == null) return;
+        if (path != null) OpenFile(path, interpreter, console);
+    }
+
+    /// <summary>Mounts or loads a file, whether it was dropped on the window or picked in the Open dialog.</summary>
+    static void OpenFile(string path, Interpreter interpreter, ScreenConsole console)
+    {
 
         try
         {

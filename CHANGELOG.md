@@ -1,6 +1,8 @@
 # Unreleased
 
 **Window**
+- An OPEN button and Ctrl+O: the system file dialog to pick a disk, tape, cartridge, program or state file; in ROM mode a picked or dropped
+  disk or tape resets and starts its first program.
 - A toolbar above the picture in both windows (buttons for reset, warp, state, copy/paste, screenshot, full screen, and in ROM mode pause, disk
   swap and tape), `--no-toolbar`, Ctrl+F12. Mouse text selection (Shift + drag copies, `ScreenSelection`) and middle-click paste.
 

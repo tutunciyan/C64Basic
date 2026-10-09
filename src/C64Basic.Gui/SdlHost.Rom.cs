@@ -54,6 +54,7 @@ static unsafe partial class SdlHost
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         var buttons = new List<ToolButton>
         {
+            new() { Label = "OPEN", Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },
             new() { Label = "RESET", Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
             new() { Label = "WARP", Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
             new() { Label = "PAUSE", Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
@@ -104,6 +105,8 @@ static unsafe partial class SdlHost
                         break;
                 }
             }
+
+            if (TakePickedFile() is { } picked) RomOpenFile(picked, machine);
 
             if (_statusMessage is { } message)
             {
@@ -198,6 +201,7 @@ static unsafe partial class SdlHost
                 return;
         }
 
+        if (!repeat && control && code == Scancode.ScancodeO) { AskForFile(); return; }
         if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB) { RomSwapDisk(machine, code == Scancode.ScancodeN ? 1 : -1); return; }
         if (!repeat && control && code == Scancode.ScancodeT) { RomToggleTape(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeR) { RomRewindTape(machine); return; }
@@ -224,6 +228,13 @@ static unsafe partial class SdlHost
 
         if (!repeat && KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) machine.Input.SetKey(k, true);
+    }
+
+    /// <summary>Starts the first program of the disk in drive 8 from a fresh boot, as a user would: <c>LOAD"*",8,1</c> and RUN.</summary>
+    static void StartFromDisk(RomMachine machine)
+    {
+        machine.Reset();
+        machine.Type("LOAD\"*\",8,1\rRUN\r");
     }
 
     // ---------- what the keys and the toolbar both do ----------
@@ -295,7 +306,12 @@ static unsafe partial class SdlHost
     {
         string? path = Marshal.PtrToStringUTF8((nint)file);
         Sdl.Free(file);
-        if (path == null) return;
+        if (path != null) RomOpenFile(path, machine);
+    }
+
+    /// <summary>Mounts or loads a file, whether it was dropped on the window or picked in the Open dialog.</summary>
+    static void RomOpenFile(string path, RomMachine machine)
+    {
         try
         {
             switch (Path.GetExtension(path).ToLowerInvariant())
@@ -305,7 +321,7 @@ static unsafe partial class SdlHost
                     {
                         machine.Post(() =>
                         {
-                            try { machine.MountDiskFile(path); _statusMessage = "disk mounted: " + Path.GetFileName(path); }
+                            try { machine.MountDiskFile(path); StartFromDisk(machine); _statusMessage = "started from " + Path.GetFileName(path); }
                             catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
                         });
                         break;
@@ -314,7 +330,7 @@ static unsafe partial class SdlHost
                 case ".prg":
                     machine.Post(() =>
                     {
-                        try { machine.MountDiskFile(path); _statusMessage = "put on a blank disk: " + Path.GetFileName(path) + " (LOAD\"NAME\",8,1)"; }
+                        try { machine.MountDiskFile(path); StartFromDisk(machine); _statusMessage = "started from " + Path.GetFileName(path); }
                         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
                     });
                     break;
@@ -333,7 +349,13 @@ static unsafe partial class SdlHost
                 case ".tap":
                     machine.Post(() =>
                     {
-                        try { machine.MountTapeFile(path); _statusMessage = "tape mounted: " + Path.GetFileName(path) + " (LOAD, and RUN)"; }
+                        try
+                        {
+                            machine.MountTapeFile(path);
+                            machine.Reset();
+                            machine.Type("LOAD\rRUN\r");
+                            _statusMessage = "started from " + Path.GetFileName(path);
+                        }
                         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
                     });
                     break;

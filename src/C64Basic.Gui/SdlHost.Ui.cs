@@ -47,6 +47,30 @@ static unsafe partial class SdlHost
         _hover = _pressed = -1;
     }
 
+    // ---------- the Open dialog ----------
+    static volatile string? _pickedFile;
+    static int _dialogOpen;
+
+    /// <summary>Shows the system's file dialog on a thread of its own (it blocks); the pick is handed back to the window loop through <see cref="TakePickedFile"/>.</summary>
+    static void AskForFile()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _dialogOpen, 1) == 1) return;      // one at a time
+        _statusMessage = "choose a file: disk, tape, cartridge, program or state";
+        new System.Threading.Thread(() =>
+        {
+            try
+            {
+                string? path = FileDialog.Open("Open a disk, tape, cartridge or program", out string? problem);
+                if (path != null) _pickedFile = path;
+                else if (problem != null) _statusMessage = problem;
+            }
+            finally { _dialogOpen = 0; }
+        }) { IsBackground = true, Name = "file dialog" }.Start();
+    }
+
+    /// <summary>The file chosen in the dialog since the last call, or null.</summary>
+    static string? TakePickedFile() => System.Threading.Interlocked.Exchange(ref _pickedFile, null);
+
     // ---------- the selection and the clipboard ----------
     /// <summary>The selected text, or the whole screen when nothing is selected.</summary>
     static string TextToCopy()

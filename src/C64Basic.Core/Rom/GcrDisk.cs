@@ -108,6 +108,36 @@ public sealed class GcrDisk
         return output.AsSpan(0, used).ToArray();
     }
 
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(WriteProtected); w.Write(Modified);
+        for (int slot = 0; slot < Slots; slot++)
+        {
+            var track = Tracks[slot];
+            w.Write(track != null);
+            if (track != null) { w.Write(track.Length); w.Write(track); }
+            w.Write(Speeds[slot]);
+            var table = SpeedTables[slot];
+            w.Write(table != null);
+            if (table != null) { w.Write(table.Length); w.Write(table); }
+        }
+    }
+
+    public static GcrDisk LoadState(BinaryReader r)
+    {
+        var disk = new GcrDisk { WriteProtected = r.ReadBoolean(), Modified = r.ReadBoolean() };
+        for (int slot = 0; slot < Slots; slot++)
+        {
+            if (r.ReadBoolean()) disk.Tracks[slot] = Machine.Bus.ReadExact(r, CheckedLength(r.ReadInt32()));
+            disk.Speeds[slot] = r.ReadInt32();
+            if (r.ReadBoolean()) disk.SpeedTables[slot] = Machine.Bus.ReadExact(r, CheckedLength(r.ReadInt32()));
+        }
+        return disk;
+    }
+
+    static int CheckedLength(int length) =>
+        length is >= 0 and <= 65536 ? length : throw new InvalidDataException("a track in the saved state has an impossible length");
+
     /// <summary>The sectors of tracks 1-35 as a D64 image, plus a report of anything that did not read cleanly.</summary>
     public (byte[] Disk, G64Report Report) ToD64() => G64Image.Decode(ToG64());
 

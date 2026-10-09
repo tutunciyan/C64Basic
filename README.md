@@ -243,17 +243,30 @@ What you get: the real boot (a RAM test, then the banner after about three secon
 of every track, half-tracks and speed zones included), disk swaps, `RESTORE` and RUN/STOP+RESTORE, the joystick, paddles and light pen,
 and a keyboard that goes through the matrix (so Ctrl, the Commodore key and Shift behave like the real ones).
 
+The drive **writes**, too: the write head puts what the DOS sends on the track, so `SAVE`, `SCRATCH`, `VALIDATE`, block commands and a
+full `NEW` (format) work against the real DOS. A mounted `.d64` file is saved back after every write (once all its sectors read cleanly
+again, so never half-way through a format; a missing `.d64` is created blank). A `.g64` is someone else's raw tracks: the drive may write
+to the copy in memory, the file is never touched, and the title says so. The undocumented opcodes copy protection likes are there too,
+the unstable ones (XAA, LAX #, AHX, TAS, SHX, SHY, LAS) with the values most emulators agree on.
+
+Ctrl+S and Ctrl+L save and load the whole machine (`--state <file>`, `--resume`): both processors, RAM, every chip, the drive's head
+and the disk as it is now. It is exact: a state taken in the middle of a fast load carries on to the same bytes as the original run.
+The window title shows the drive at work (`1541: track 18`, `writing`); `--iec-rise <us>` changes the serial bus rise time (below).
+
 How the two processors stay in step: the C64 (985248 Hz) and the drive (1 MHz) run in lockstep. The one whose next bus access, the data
 access in the last cycle of its next instruction, comes first takes the next step, so a store by one and a load by the other happen in
 the right order within a cycle. That is what a fast loader needs: the 1943 loader here sends two bits at a time with a window of a couple
 of microseconds, and only works when a released serial line rises about a microsecond late (a line is only pulled up by a resistor through
-the cable's capacitance), which the model has. A boot from a game image takes about a minute of emulated time, the same as the real
-machine, and `--fast` skips the speed limit.
+the cable's capacitance), which the model has: 1.2 microseconds, and anything from about 0.8 to 1.7 loads the game, none at all does
+not. If a fast loader that works on a real machine fails here, `--iec-rise` is the knob to try. A boot from a game image takes about a
+minute of emulated time, the same as the real machine, and `--fast` skips the speed limit.
 
-Known limits: a unit-for-unit chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
-and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and some undocumented opcodes are
-missing (the processor stops with a message in the title bar). The disk head reads at the speed each track was recorded at whatever the
-density bits say.
+Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
+and bad lines, but not every cycle-level effect; the processor does not stall in the middle of an instruction when the VIC takes the
+bus), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
+The disk head reads and writes at the speed each track was recorded at, whatever the density bits say, a G64's per-byte speed tables
+are read but not written back, and half-tracks are read exactly but the stepper is a simple model (it cannot be left between two
+positions).
 
 ## Not implemented
 

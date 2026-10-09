@@ -21,6 +21,7 @@ const string Usage = """
                       Esc = RUN/STOP, Ctrl+D quits; no sound (use the GUI)
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
+      --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2; fast loaders need about 0.8 to 1.7)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 instead of the built-in BASIC (needs the ROM
                       dumps in <d>; draws the picture like --pixels, so it needs a terminal; --disk mounts a .d64 or .g64, --fast
                       skips the C64 speed limit; no program file, tape, --plain or --strict)
@@ -57,6 +58,11 @@ for (int i = 0; i < args.Length; i++)
                 disks.Add((unit, spec));
                 break;
             }
+        case "--iec-rise":
+            if (++i >= args.Length || !double.TryParse(args[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rise) || rise < 0 || rise > 10)
+            { System.Console.Error.WriteLine("--iec-rise needs a number of microseconds from 0 to 10"); return 2; }
+            RomMachine.IecRiseSeconds = rise * 1e-6;
+            break;
         case "--rom-dir":
             if (++i >= args.Length) { System.Console.Error.WriteLine("--rom-dir needs a folder with the ROM dumps"); return 2; }
             romDir = args[i];

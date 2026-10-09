@@ -269,6 +269,29 @@ public sealed class Via6522 : ICpuMemory
         }
     }
 
+    public void SaveState(BinaryWriter w)
+    {
+        Sync();
+        w.Write(Ora); w.Write(Orb); w.Write(Ddra); w.Write(Ddrb);
+        w.Write(_ifr); w.Write(_ier); w.Write(_acr); w.Write(_pcr); w.Write(_sr);
+        w.Write(_iraLatch); w.Write(_irbLatch);
+        w.Write(_t1Latch); w.Write(_t1Base); w.Write(_t1Running); w.Write(_t1Fired); w.Write(_pb7);
+        w.Write(_t2LatchLow); w.Write(_t2Start); w.Write(_t2Base); w.Write(_t2Running);
+        w.Write(_lastSync);
+        w.Write(_ca1); w.Write(_ca2); w.Write(_cb1); w.Write(_cb2); w.Write(_ca2Handshake);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        Ora = r.ReadByte(); Orb = r.ReadByte(); Ddra = r.ReadByte(); Ddrb = r.ReadByte();
+        _ifr = r.ReadByte(); _ier = r.ReadByte(); _acr = r.ReadByte(); _pcr = r.ReadByte(); _sr = r.ReadByte();
+        _iraLatch = r.ReadByte(); _irbLatch = r.ReadByte();
+        _t1Latch = r.ReadInt32(); _t1Base = r.ReadInt64(); _t1Running = r.ReadBoolean(); _t1Fired = r.ReadBoolean(); _pb7 = r.ReadBoolean();
+        _t2LatchLow = r.ReadInt32(); _t2Start = r.ReadInt32(); _t2Base = r.ReadInt64(); _t2Running = r.ReadBoolean();
+        _lastSync = r.ReadInt64();
+        _ca1 = r.ReadBoolean(); _ca2 = r.ReadBoolean(); _cb1 = r.ReadBoolean(); _cb2 = r.ReadBoolean(); _ca2Handshake = r.ReadBoolean();
+    }
+
     /// <summary>Power-on: every register clear, all pins inputs, no interrupts.</summary>
     public void Reset()
     {

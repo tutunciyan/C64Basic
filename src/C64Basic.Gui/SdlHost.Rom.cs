@@ -11,12 +11,16 @@ static unsafe partial class SdlHost
 {
     static volatile bool _romWarp;
 
+    /// <summary>The file Ctrl+S and Ctrl+L use for the state of ROM mode.</summary>
+    static string _romStateFile = "c64rom-state.sav";
+
     public static int RunRom(RomMachine machine, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2,
-        bool warp = false)
+        bool warp = false, string? stateFile = null, bool resume = false)
     {
         _bus = machine.Bus;
         _keyboardPort = keyboardPort;
         _romWarp = warp;
+        if (stateFile != null) _romStateFile = stateFile;
 
         if (Sdl.Init(Sdl.InitVideo | Sdl.InitAudio | Sdl.InitEvents | Sdl.InitGamecontroller) != 0)
         {
@@ -46,10 +50,12 @@ static unsafe partial class SdlHost
         var worker = new System.Threading.Thread(() => machine.RunPaced(() => !running, () => _romWarp))
         { IsBackground = true, Name = "C64 ROM mode" };
         worker.Start();
+        if (resume) LoadRomState(machine);
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
         var joystick = (byte)0;
-        long startedAt = Environment.TickCount64;
+        long startedAt = Environment.TickCount64, titleAt = 0;
+        string shownTitle = "";
 
         while (running)
         {
@@ -85,12 +91,18 @@ static unsafe partial class SdlHost
                 _statusUntil = Environment.TickCount64 + 3000;
                 Sdl.SetWindowTitle(window, "C64 (ROM mode) - " + message);
             }
+            else if (_statusUntil == 0 && Environment.TickCount64 - titleAt >= 250)
+            {
+                // the title shows the drive at work: its head position while the motor runs
+                titleAt = Environment.TickCount64;
+                string title = RomTitle(machine);
+                if (title != shownTitle) { shownTitle = title; Sdl.SetWindowTitle(window, title); }
+            }
             else if (_statusUntil != 0 && Environment.TickCount64 > _statusUntil)
             {
                 _statusUntil = 0;
-                Sdl.SetWindowTitle(window, _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)");
+                shownTitle = "";
             }
-            if (machine.Halted && _statusUntil == 0) Sdl.SetWindowTitle(window, "C64 (ROM mode) - stopped: " + machine.HaltReason);
 
             if (LightPen && _mouseButtons != 0) StrikeLightPen(window);
             _bus.Vic.Render(frame);
@@ -118,6 +130,16 @@ static unsafe partial class SdlHost
         return 0;
     }
 
+    static string RomTitle(RomMachine machine)
+    {
+        string title = _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)";
+        if (machine.Halted) return title + " - stopped: " + machine.HaltReason;
+        var drive = machine.Drive?.Mechanics;
+        if (drive is { MotorOn: true })
+            title += $" - 1541: track {drive.Track:0.#}{(drive.Writing ? ", writing" : "")}";
+        return title;
+    }
+
     static void RomKeyDown(KeyboardEvent key, RomMachine machine, Window* window, uint[] frame, ref byte joystick)
     {
         var code = key.Keysym.Scancode;
@@ -129,7 +151,6 @@ static unsafe partial class SdlHost
         {
             case Scancode.ScancodeF9 when !repeat:
                 _romWarp = !_romWarp;
-                Sdl.SetWindowTitle(window, _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)");
                 return;
             case Scancode.ScancodeF10 when !repeat:
                 machine.Post(machine.Reset);
@@ -148,10 +169,12 @@ static unsafe partial class SdlHost
                 machine.Input.SetJoystick(_keyboardPort, 0);
                 _keyboardPort = _keyboardPort == 2 ? 1 : 2;
                 machine.Input.SetJoystick(_keyboardPort, joystick);
-                Sdl.SetWindowTitle(window, $"C64 (ROM mode, numpad = joystick {_keyboardPort})");
+                _statusMessage = $"numpad = joystick {_keyboardPort}";
                 return;
         }
 
+        if (!repeat && control && code == Scancode.ScancodeS) { SaveRomState(machine); return; }
+        if (!repeat && control && code == Scancode.ScancodeL) { LoadRomState(machine); return; }
         if (!repeat && ((control && code == Scancode.ScancodeV) || (shift && code == Scancode.ScancodeInsert)))
         {
             string? text = Sdl.GetClipboardTextS();
@@ -226,8 +249,12 @@ static unsafe partial class SdlHost
                         });
                         break;
                     }
+                case ".sav":
+                    File.Copy(path, _romStateFile, overwrite: true);
+                    LoadRomState(machine);
+                    break;
                 default:
-                    _statusMessage = "ROM mode takes disk images (.d64, .g64)";
+                    _statusMessage = "ROM mode takes disk images (.d64, .g64) and saved states (.sav)";
                     break;
             }
         }
@@ -235,5 +262,32 @@ static unsafe partial class SdlHost
         {
             Console.Error.WriteLine(e.Message);
         }
+    }
+
+    // ---------- machine state ----------
+    static void SaveRomState(RomMachine machine)
+    {
+        string file = _romStateFile;
+        machine.Post(() =>
+        {
+            try { File.WriteAllBytes(file, machine.SaveState()); _statusMessage = $"state saved ({Path.GetFileName(file)})"; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { _statusMessage = "could not save: " + e.Message; }
+        });
+    }
+
+    static void LoadRomState(RomMachine machine)
+    {
+        byte[] data;
+        try { data = File.ReadAllBytes(_romStateFile); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _statusMessage = "no saved state (" + Path.GetFileName(_romStateFile) + ")";
+            return;
+        }
+        machine.Post(() =>
+        {
+            try { machine.LoadState(data); _statusMessage = "state loaded"; }
+            catch (Exception e) when (e is IOException or InvalidDataException) { _statusMessage = "could not load: " + e.Message; }
+        });
     }
 }

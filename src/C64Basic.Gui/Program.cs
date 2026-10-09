@@ -28,9 +28,11 @@ const string Usage = """
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
+      --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2). Fast loaders need about 0.8 to 1.7;
+                      change it only if one that works on a real machine does not
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
                       the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
-                      copy protection work. Typing, the joystick and the mouse work as usual; no program file argument, tape or --strict
+                      copy protection work. Typing, the joystick, the mouse and Ctrl+S / Ctrl+L (--state, --resume) work as usual; no program file argument, tape or --strict
       -h, --help      show this help
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
@@ -95,6 +97,11 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length) { Console.Error.WriteLine("--chargen needs a ROM file"); return 2; }
             chargen = args[i];
             break;
+        case "--iec-rise":
+            if (++i >= args.Length || !double.TryParse(args[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rise) || rise < 0 || rise > 10)
+            { Console.Error.WriteLine("--iec-rise needs a number of microseconds from 0 to 10"); return 2; }
+            RomMachine.IecRiseSeconds = rise * 1e-6;
+            break;
         case "--rom-dir":
             if (++i >= args.Length) { Console.Error.WriteLine("--rom-dir needs a folder with the ROM dumps"); return 2; }
             romDir = args[i];
@@ -113,8 +120,8 @@ for (int i = 0; i < args.Length; i++)
 
 if (romDir != null)
 {
-    if (program != null || tape != null || strict || resume || stateFile != null)
-    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape, --strict, --state or --resume (use --disk with a disk image)"); return 2; }
+    if (program != null || tape != null || strict)
+    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape or --strict (use --disk with a disk image)"); return 2; }
     if (disks.Count > 1 || disks.Any(d => d.Device != 8))
     { Console.Error.WriteLine("ROM mode has one drive, device 8: use a single --disk"); return 2; }
     try
@@ -126,7 +133,7 @@ if (romDir != null)
         if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
         if (disks.Count == 1) machine.MountDiskFile(disks[0].Path);
         if (typeText != null) machine.Type(typeText);
-        return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast);
+        return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
     }
     catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
     {

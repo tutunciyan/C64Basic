@@ -171,6 +171,58 @@ public sealed class RomMachine
     /// <summary>Has an action run on the machine's own thread, between slices (mounting a disk, resetting, saving state).</summary>
     public void Post(Action action) => _posted.Enqueue(action);
 
+    // ---------- saved state ----------
+    const string StateMagic = "C64ROMSTATE";
+    const int StateVersion = 1;
+
+    /// <summary>
+    /// The whole machine as bytes: the processor, RAM and every chip of the C64, and the drive with its processor, RAM, VIAs, head
+    /// position and the disk as it is now (the tracks, so a game that wrote to its disk keeps that). Call it from the machine's own
+    /// thread (<see cref="Post"/>) while it runs.
+    /// </summary>
+    public byte[] SaveState()
+    {
+        using var stream = new MemoryStream();
+        using (var w = new BinaryWriter(stream))
+        {
+            w.Write(StateMagic);
+            w.Write(StateVersion);
+            w.Write(Drive != null);
+            Cpu.SaveState(w);
+            Bus.SaveState(w);
+            if (Drive != null)
+            {
+                Drive.SaveState(w);
+                Iec!.SaveState(w);
+            }
+        }
+        return stream.ToArray();
+    }
+
+    /// <summary>Restores what <see cref="SaveState"/> wrote. Throws <see cref="InvalidDataException"/> for something that is not a state of this kind of machine.</summary>
+    public void LoadState(byte[] data)
+    {
+        using var r = new BinaryReader(new MemoryStream(data));
+        string magic;
+        try { magic = r.ReadString(); }
+        catch (Exception e) when (e is EndOfStreamException or IOException or ArgumentException) { throw new InvalidDataException("not a ROM mode state file"); }
+        if (magic != StateMagic) throw new InvalidDataException("not a ROM mode state file");
+        int version = r.ReadInt32();
+        if (version != StateVersion) throw new InvalidDataException($"state file version {version} is not supported");
+        bool hadDrive = r.ReadBoolean();
+        if (hadDrive != (Drive != null)) throw new InvalidDataException(hadDrive ? "the state has a drive and this machine has none" : "this machine has a drive and the state has none");
+
+        HaltReason = null;
+        Cpu.LoadState(r);          // first: the chips take their time from the processor's clock
+        Bus.LoadState(r);
+        if (Drive != null)
+        {
+            Drive.LoadState(r);
+            Iec!.LoadState(r);
+        }
+        lock (_typed) _typed.Clear();
+    }
+
     // ---------- typing ----------
     /// <summary>
     /// Types text as if from the keyboard, through the KERNAL's own keyboard buffer (ten characters, drained by the editor):

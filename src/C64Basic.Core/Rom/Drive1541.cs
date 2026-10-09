@@ -52,6 +52,25 @@ public sealed class Drive1541 : ILockstepMember
         Cpu.Reset();
     }
 
+    // ---------- saved state ----------
+    public void SaveState(BinaryWriter w)
+    {
+        Cpu.SaveState(w);
+        w.Write(Ram);
+        Via1.SaveState(w);
+        Via2.SaveState(w);
+        Mechanics.SaveState(w);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        Cpu.LoadState(r);
+        Bus.ReadExact(r, RamSize).CopyTo(Ram, 0);
+        Via1.LoadState(r);
+        Via2.LoadState(r);
+        Mechanics.LoadState(r);
+    }
+
     // ---------- ILockstepMember ----------
     public long Cycles => Cpu.Cycles;
     double ILockstepMember.Hz => ClockHz;

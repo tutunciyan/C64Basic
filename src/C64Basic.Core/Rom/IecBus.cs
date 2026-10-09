@@ -60,6 +60,18 @@ public sealed class IecBus
     /// <summary>The drive's bus access in seconds (the same half-cycle offset the C64's chips use).</summary>
     static double DriveTime(Drive1541 drive) => (drive.Cpu.AccessCycle + 0.5) / Drive1541.ClockHz;
 
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(Atn); w.Write(_clkHigh); w.Write(_dataHigh);
+        w.Write(_clkRose); w.Write(_dataRose); w.Write(_atnRose);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        Atn = r.ReadBoolean(); _clkHigh = r.ReadBoolean(); _dataHigh = r.ReadBoolean();
+        _clkRose = r.ReadDouble(); _dataRose = r.ReadDouble(); _atnRose = r.ReadDouble();
+    }
+
     bool AtnPulledByC64 => (_cia.PortAOutput & 0x08) != 0;
 
     bool ClkLow()

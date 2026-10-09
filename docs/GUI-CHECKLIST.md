@@ -70,3 +70,7 @@ and tick them off. Note the OS and the result.
 - [ ] Ctrl+V pastes a line of BASIC; Ctrl+C copies the screen text.
 - [ ] Numpad is the joystick; `PRINT PEEK(56320)` shows 127 when idle on port 2 and a changed value while a numpad key is held.
 - [ ] `--rom-dir` with a missing folder or missing ROMs names what is missing and exits.
+- [ ] `--disk new.d64` (a file that does not exist) makes a blank disk; `10 PRINT "HI"`, `SAVE "HI",8` and the title says "disk saved"; a second run with the same `--disk` lists `HI`.
+- [ ] A `.g64` stays untouched after a `SAVE` (the title says it was not saved).
+- [ ] Ctrl+S in the middle of loading a game and Ctrl+L after it carries on loading; `--resume` starts from the saved state.
+- [ ] The title shows `1541: track N` while the drive spins and `writing` while it saves.

@@ -263,6 +263,26 @@ public sealed class Cpu6502
         }
     }
 
+    /// <summary>Writes the registers and the clock of a native processor.</summary>
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(A); w.Write(X); w.Write(Y); w.Write(SP); w.Write(P);
+        w.Write(PC);
+        w.Write(Cycles);
+        w.Write(_nmiActive);
+    }
+
+    /// <summary>Reads what <see cref="SaveState"/> wrote; the clock (and <see cref="AccessCycle"/>) is where it was.</summary>
+    public void LoadState(BinaryReader r)
+    {
+        A = r.ReadByte(); X = r.ReadByte(); Y = r.ReadByte(); SP = r.ReadByte(); P = r.ReadByte();
+        PC = r.ReadInt32();
+        Cycles = r.ReadInt64();
+        _nmiActive = r.ReadBoolean();
+        AccessCycle = Cycles;
+        StopReason = CpuStop.None;
+    }
+
     /// <summary>The byte at the program counter (for a message about where the processor stopped).</summary>
     public int PeekOpcode() => _mem.Read(PC & 0xFFFF);
 

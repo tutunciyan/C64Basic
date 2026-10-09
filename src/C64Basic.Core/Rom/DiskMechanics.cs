@@ -151,6 +151,34 @@ public sealed class DiskMechanics
         _motor = motor;
     }
 
+    public void SaveState(BinaryWriter w)
+    {
+        AdvanceTo(_drive.Cpu.Cycles);
+        w.Write(_disk != null);
+        _disk?.SaveState(w);
+        w.Write(_slot); w.Write(_bitPos); w.Write(_phase); w.Write(_motor);
+        w.Write(_next16); w.Write(_shift); w.Write(_bitCount); w.Write(_sync); w.Write(_data);
+        w.Write(_byteReadyLow); w.Write(_byteReadyEnds16);
+        w.Write(_writing); w.Write(_writeActive); w.Write(_wroteSomething); w.Write(_writesPending);
+        w.Write(_writeShift); w.Write(_writeCount);
+        w.Write(Led); w.Write(Density); w.Write(Revolutions); w.Write(BytesRead); w.Write(BytesWritten);
+        w.Write(_sensorBlockedUntil);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        _disk = r.ReadBoolean() ? GcrDisk.LoadState(r) : null;
+        _slot = r.ReadInt32(); _bitPos = r.ReadInt32(); _phase = r.ReadInt32(); _motor = r.ReadBoolean();
+        _next16 = r.ReadInt64(); _shift = r.ReadInt32(); _bitCount = r.ReadInt32(); _sync = r.ReadBoolean(); _data = r.ReadByte();
+        _byteReadyLow = r.ReadBoolean(); _byteReadyEnds16 = r.ReadInt64();
+        _writing = r.ReadBoolean(); _writeActive = r.ReadBoolean(); _wroteSomething = r.ReadBoolean(); _writesPending = r.ReadBoolean();
+        _writeShift = r.ReadByte(); _writeCount = r.ReadInt32();
+        Led = r.ReadBoolean(); Density = r.ReadInt32(); Revolutions = r.ReadInt64(); BytesRead = r.ReadInt64(); BytesWritten = r.ReadInt64();
+        _sensorBlockedUntil = r.ReadInt64();
+        _track = _disk?.Tracks[Math.Clamp(_slot, 0, GcrDisk.Slots - 1)];
+        if (_track != null && _bitPos >= _track.Length * 8) _bitPos = 0;
+    }
+
     /// <summary>The peripheral control register of VIA 2 changed: CB2 low is the write head (read/write select).</summary>
     public void ControlChanged()
     {

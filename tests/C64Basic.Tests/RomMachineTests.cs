@@ -365,6 +365,98 @@ public class RomMachineTests
         Assert.Equal(Run(), Run());
     }
 
+    // ---------- saved state ----------
+    static string Signature(RomMachine m) =>
+        $"{m.Cpu.PC:X4} {m.Cpu.A:X2} {m.Cpu.X:X2} {m.Cpu.Y:X2} {m.Cpu.SP:X2} {m.Cpu.Cycles} | " +
+        $"{m.Drive!.Cpu.PC:X4} {m.Drive.Cpu.A:X2} {m.Drive.Cycles} {m.Drive.Mechanics.Track} {m.Drive.Mechanics.BytesRead}\n{m.ScreenText()}";
+
+    [Fact]
+    public void ASavedStateRunsOnExactlyAsTheOriginalDid()
+    {
+        var m = Boot();
+        if (m == null) return;
+        m.Type("10 PRINT\"STATE\";:GOTO 10\rRUN\r");
+        m.RunSeconds(0.5);
+        byte[] state = m.SaveState();
+
+        m.RunSeconds(1.0);
+        string original = Signature(m);
+        Assert.Contains("STATESTATE", original);
+
+        m.LoadState(state);
+        m.RunSeconds(1.0);
+        Assert.Equal(original, Signature(m));
+    }
+
+    [Fact]
+    public void AStateLoadsIntoAFreshMachineWithItsDiskAndProgram()
+    {
+        var m = Boot();
+        if (m == null) return;
+        var image = D64Image.Create("IN STATE", "IS");
+        image.Write("HELLO", FileType.Prg, HelloProgram(), replace: false);
+        m.MountDisk(image.ToArray());
+        m.Type("LOAD\"HELLO\",8\r");
+        Assert.True(m.RunUntil(() => m.ScreenText().Split('\n').Count(l => l == "READY.") >= 2, 15), m.ScreenText());
+        byte[] state = m.SaveState();
+        m.Type("RUN\r");
+        m.RunSeconds(1);
+        string original = Signature(m);
+
+        var other = new RomMachine(TestRoms.Find()!);
+        other.LoadState(state);
+        other.Type("RUN\r");
+        other.RunSeconds(1);
+        Assert.Equal(original, Signature(other));
+        Assert.Contains("HI FROM DISK", other.ScreenText());
+    }
+
+    [Fact]
+    public void AStateTakenWhileTheDriveIsLoadingAFileFinishesTheLoad()
+    {
+        var m = Boot();
+        if (m == null) return;
+        var payload = new byte[6000];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i * 7);
+        var program = new byte[payload.Length + 2];
+        program[0] = 0x00; program[1] = 0x40;
+        payload.CopyTo(program, 2);
+        var image = D64Image.Create("BIGLOAD", "BL");
+        image.Write("BIG", FileType.Prg, program, replace: false);
+        m.MountDisk(image.ToArray());
+        m.Type("LOAD\"BIG\",8,1\r");
+        m.RunUntil(() => m.Drive!.Mechanics.BytesRead > 20000 && m.Drive.Mechanics.Track != 1, 30);   // the drive is busy with the file
+        byte[] state = m.SaveState();
+        Assert.True(m.RunUntil(() => m.ScreenText().Split('\n').Count(l => l == "READY.") >= 2, 30), m.ScreenText());
+
+        var other = new RomMachine(TestRoms.Find()!);
+        other.LoadState(state);
+        other.Bus.Ram.AsSpan(0x4000, payload.Length).Clear();       // so only the restored run can bring the file back
+        Assert.True(other.RunUntil(() => other.ScreenText().Split('\n').Count(l => l == "READY.") >= 2, 30), other.ScreenText());
+        Assert.Equal(payload, other.Bus.Ram.AsSpan(0x4000, payload.Length).ToArray());
+
+        // the two machines followed the same course: brought to the same moment they are the same machine
+        long common = Math.Max(m.Cycles, other.Cycles) + 50_000;
+        m.RunSeconds((common - m.Cycles) / RomMachine.ClockHz);
+        other.RunSeconds((common - other.Cycles) / RomMachine.ClockHz);
+        Assert.Equal(Signature(m), Signature(other));
+    }
+
+    [Fact]
+    public void AStateThatIsNotOneOrDoesNotFitIsRefused()
+    {
+        var m = Boot();
+        if (m == null) return;
+        Assert.Throws<InvalidDataException>(() => m.LoadState(new byte[] { 1, 2, 3 }));
+        Assert.ThrowsAny<IOException>(() => m.LoadState(m.SaveState().AsSpan(0, 100).ToArray()));
+        var noDrive = new RomMachine(TestRoms.Find()!, withDrive: false);
+        byte[] withDrive = m.SaveState();
+        Assert.Throws<InvalidDataException>(() => noDrive.LoadState(withDrive));
+        Assert.Throws<InvalidDataException>(() => m.LoadState(noDrive.SaveState()));
+        // a refused state leaves the machine as it was
+        Assert.Contains("READY.", m.ScreenText());
+    }
+
     [Fact]
     public void ResetStartsAgainFromTheKernalWithTheDiskStillInTheDrive()
     {
@@ -382,6 +474,34 @@ public class RomMachineTests
     }
 
     // ---------- a real game with a fast loader (a local, git-ignored image) ----------
+    [Fact]
+    public void AStateTakenInTheMiddleOfAFastLoadRunsOnLikeTheOriginal()
+    {
+        var roms = TestRoms.Find();
+        if (roms == null) return;
+        string? path = null;
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
+        {
+            string samples = Path.Combine(dir.FullName, "samples");
+            if (Directory.Exists(samples)) path = Directory.GetFiles(samples, "1943*.g64").FirstOrDefault();
+        }
+        if (path == null) return;
+
+        var m = new RomMachine(roms);
+        m.RunSeconds(3.0);
+        m.MountDisk(File.ReadAllBytes(path));
+        m.Type("LOAD\"43\",8,1\r");
+        Assert.True(m.RunUntil(() => m.Drive!.Cpu.PC is >= 0x0600 and < 0x0700, 20));
+        m.RunSeconds(12);                                        // well into the transfer, bytes in flight on the serial bus
+        byte[] state = m.SaveState();
+        var other = new RomMachine(roms);
+        other.LoadState(state);
+        m.RunSeconds(8);
+        other.RunSeconds((m.Cycles - other.Cycles) / RomMachine.ClockHz);
+        Assert.Equal(Signature(m), Signature(other));
+        Assert.Equal(m.Bus.Ram, other.Bus.Ram);
+    }
+
     [Fact]
     public void AGameWithAFastLoaderLoadsAndRuns()
     {

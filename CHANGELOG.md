@@ -17,6 +17,8 @@
 - The 1541 writes: the write head (VIA 2 CB2 low) puts port A on the track at the speed of the zone, so the real DOS can `SAVE`, scratch,
   validate and format. A mounted D64 file is saved back after a write; a G64 stays as it was (changes live in memory).
 - The unstable undocumented opcodes (XAA, LAX #, AHX, TAS, SHX, SHY, LAS) run in ROM mode, for copy protection that uses them.
+- ROM mode saves and restores the whole machine (Ctrl+S / Ctrl+L, `--state`, `--resume`), exactly: a state from the middle of a fast load
+  runs on to the same result. `--iec-rise <us>` tunes the serial bus rise time; the window title shows the drive (track, writing).
 
 # Changes since v0.1.0
 

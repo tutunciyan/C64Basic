@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/docs/">
+    <File Path="CHANGELOG.md" />
+    <File Path="docs/GUI-CHECKLIST.md" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/C64Basic.Console/C64Basic.Console.csproj" />
     <Project Path="src/C64Basic.Core/C64Basic.Core.csproj" />

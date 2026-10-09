@@ -18,6 +18,9 @@ public sealed class Drive1541 : ILockstepMember
     public Via6522 Via1 { get; } = new();
     public Via6522 Via2 { get; } = new();
 
+    /// <summary>The stepper, motor and read channel behind VIA 2.</summary>
+    public DiskMechanics Mechanics { get; }
+
     readonly Memory _memory;
 
     public Drive1541(byte[] rom)
@@ -28,7 +31,14 @@ public sealed class Drive1541 : ILockstepMember
         Cpu = new Cpu6502(_memory);
         Cpu.IrqLine = () => Via1.IrqActive | Via2.IrqActive;
         Via1.Clock = Via2.Clock = () => Cpu.AccessCycle;
+        Mechanics = new DiskMechanics(this);
+        Via2.PinsA = Mechanics.PinsA;
+        Via2.PinsB = Mechanics.PinsB;
+        Via2.PortBChanged += Mechanics.PortBChanged;
     }
+
+    /// <summary>Puts a disk in the drive (or takes it out with null).</summary>
+    public void InsertDisk(GcrDisk? disk) => Mechanics.Insert(disk);
 
     /// <summary>Power on: the VIAs are cleared and the processor starts at the reset vector in the ROM.</summary>
     public void Reset()
@@ -43,7 +53,11 @@ public sealed class Drive1541 : ILockstepMember
     double ILockstepMember.Hz => ClockHz;
 
     /// <summary>One instruction (or interrupt entry) of the drive's processor.</summary>
-    public void Step() => Cpu.StepNative();
+    public void Step()
+    {
+        Mechanics.AdvanceTo(Cpu.Cycles);
+        Cpu.StepNative();
+    }
 
     sealed class Memory : ICpuMemory
     {

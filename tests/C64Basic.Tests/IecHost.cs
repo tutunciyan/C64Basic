@@ -84,7 +84,7 @@ public sealed class IecHost
     {
         Run(60);
         Clk(false);                                                  // ready to send
-        if (!RunUntil(() => DataIsHigh, 1_000_000)) return false;    // and the listener is ready too
+        if (!RunUntil(() => DataIsHigh, 10_000_000)) return false;   // and the listener is ready too (it may be busy seeking)
         if (eoi)
         {
             // wait long enough for the listener to notice and acknowledge with a pulse on DATA
@@ -140,13 +140,13 @@ public sealed class IecHost
         Data(true);
         Atn(false);
         Clk(false);
-        return RunUntil(() => !ClkIsHigh, 20_000);                   // the drive pulls CLK low: it is the talker now
+        return RunUntil(() => !ClkIsHigh, 10_000_000);               // the drive pulls CLK low: it is the talker now
     }
 
     /// <summary>Receives one byte from the talker; null on a timeout.</summary>
     public (byte Value, bool Eoi)? Receive()
     {
-        if (!RunUntil(() => ClkIsHigh, 2_000_000)) return null;      // the talker is ready
+        if (!RunUntil(() => ClkIsHigh, 10_000_000)) return null;     // the talker is ready
         Data(false);                                                 // we are ready too
         bool eoi = false;
         if (!RunUntil(() => !ClkIsHigh, 300))
@@ -176,5 +176,33 @@ public sealed class IecHost
             if (b.Eoi || b.Value == 13) break;
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// LOAD "name",8: opens channel 0 with the name, reads everything the drive sends (the two-byte load address first) and closes it.
+    /// Null if the drive did not respond. A name of "$" gives the directory.
+    /// </summary>
+    public byte[]? Load(string name)
+    {
+        if (!Command(0x28, 0xF0)) return null;
+        EndCommandAsTalker();
+        for (int i = 0; i < name.Length; i++)
+            if (!Send((byte)name[i], eoi: i == name.Length - 1)) return null;
+        Command(0x3F);                                               // UNLISTEN
+        Release();
+        if (!Command(0x48, 0x60)) return null;                       // TALK, channel 0
+        if (!TurnAround()) return null;
+        var data = new List<byte>();
+        while (Receive() is { } b)
+        {
+            data.Add(b.Value);
+            if (b.Eoi) break;
+        }
+        Command(0x5F);                                               // UNTALK
+        Release();
+        Command(0x28, 0xE0);                                         // CLOSE channel 0
+        Command(0x3F);
+        Release();
+        return data.ToArray();
     }
 }

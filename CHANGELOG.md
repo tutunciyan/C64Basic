@@ -6,6 +6,9 @@
 - The 1541's computer: 6502 at 1 MHz, 2 KB RAM, the DOS ROM and two 6522 VIAs (timers, ports, handshake pins, interrupts).
 - The serial bus: CIA 2 and the drive's VIA 1 on three wired-AND lines, including the drive's automatic ATN acknowledge. The real DOS ROM boots
   and answers on it (tested: status string, device number jumpers, error channel). ROM dumps are found in a folder by name or size and checked.
+- Disk mechanics: the stepper (half-tracks, a stop at each edge), the motor and a read channel that turns the GCR bit stream of a G64 (or a
+  D64 encoded as one) into data bytes, SYNC and byte-ready (V flag and CA1) at the speed of each zone. The real DOS reads directories and
+  multi-sector files through it, and a G64 game image's directory.
 
 # Changes since v0.1.0
 

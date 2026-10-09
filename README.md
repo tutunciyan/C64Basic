@@ -243,6 +243,10 @@ What you get: the real boot (a RAM test, then the banner after about three secon
 of every track, half-tracks and speed zones included), disk swaps, `RESTORE` and RUN/STOP+RESTORE, the joystick, paddles and light pen,
 and a keyboard that goes through the matrix (so Ctrl, the Commodore key and Shift behave like the real ones).
 
+ROM mode has up to two drives: `--disk 8=a.d64 --disk 9=b.d64` puts a second 1541 (its own 6502 running the DOS, in the same lockstep) on the
+serial bus as device 9, so `LOAD"X",8` and `SAVE"X",9` copy between disks; the window title shows which drive is turning. A state file
+keeps the number of drives it was taken with.
+
 `--disk` also takes a `.t64` tape image or a single `.prg`: its programs go on a blank disk in memory (nothing is saved back), then
 `LOAD"NAME",8,1` and `RUN` as usual. There is no datasette in ROM mode.
 
@@ -277,7 +281,7 @@ loads every `.d64`, `.g64`, `.t64` and `.prg` there and lists its directory, and
 and Ms. Pac-Man (a T64, put on a blank disk). To add a game, drop the image there and add a row to that file.
 
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
-and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
+and bad lines, but not every cycle-level effect), there is no tape, REU or cartridge, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
 The disk head counts its cells at the speed the density bits (PB5-PB6 of VIA 2) select, as the real one does, and the disk turns at 300 rpm
 whatever they say: with the density a track was recorded at every bit is read as recorded, with another one the stream is sampled at the wrong
 rate (a bit is missed or seen twice), so code that sets the density wrong, or a protection that records at an odd speed, sees what it would on

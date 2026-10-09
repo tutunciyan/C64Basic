@@ -30,7 +30,12 @@ public sealed class RomMachine
     public Cpu6502 Cpu { get; }
     public InputState Input { get; } = new();
     public RomSet Roms { get; }
-    public Drive1541? Drive { get; }
+    /// <summary>Device 8, the first drive (null for a machine without drives).</summary>
+    public Drive1541? Drive => Drives.Length > 0 ? Drives[0] : null;
+
+    /// <summary>The drives on the serial bus: device 8, and device 9 when the machine was made with two.</summary>
+    public Drive1541[] Drives { get; }
+
     public IecBus? Iec { get; }
 
     readonly Lockstep _lockstep;
@@ -48,8 +53,9 @@ public sealed class RomMachine
 
     public bool Halted => HaltReason != null;
 
-    public RomMachine(RomSet roms, bool withDrive = true)
+    public RomMachine(RomSet roms, bool withDrive = true, int driveCount = 1)
     {
+        if (driveCount is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(driveCount), "one or two drives");
         Roms = roms;
         Bus = new Bus();
         // the clock of every chip is the processor's own cycle count, so a run is the same every time
@@ -60,16 +66,22 @@ public sealed class RomMachine
 
         Cpu = new Cpu6502((ICpuMemory)Bus) { IrqLine = () => Bus.IrqLine, NmiLine = () => Bus.NmiLine, Stall = Bus.Vic.StallCycles };
         var c64 = new C64Member(this);
+        var members = new List<ILockstepMember> { c64 };
         if (withDrive)
         {
-            Drive = new Drive1541(roms.Dos);
-            Iec = new IecBus(Bus.Cia2);
-            Iec.Attach(Drive, 8);
-            Iec.RiseDelay = IecRiseSeconds;
-            _lockstep = new Lockstep(c64, new DriveMember(this));
+            Drives = new Drive1541[driveCount];
+            _slots = new DiskSlot[driveCount];
+            Iec = new IecBus(Bus.Cia2) { RiseDelay = IecRiseSeconds };
+            for (int i = 0; i < driveCount; i++)
+            {
+                Drives[i] = new Drive1541(roms.Dos);
+                _slots[i] = new DiskSlot();
+                Iec.Attach(Drives[i], 8 + i);
+                members.Add(new DriveMember(this, i));
+            }
         }
-        else _lockstep = new Lockstep(c64);
-        DiskWritten += SaveDiskFile;
+        else { Drives = Array.Empty<Drive1541>(); _slots = Array.Empty<DiskSlot>(); }
+        _lockstep = new Lockstep(members.ToArray());
         Reset();
     }
 
@@ -80,7 +92,7 @@ public sealed class RomMachine
         Bus.PowerOn();
         Cpu.Reset();
         _typed.Clear();
-        Drive?.Reset();
+        foreach (var drive in Drives) drive.Reset();
     }
 
     // ---------- time ----------
@@ -112,18 +124,20 @@ public sealed class RomMachine
     sealed class DriveMember : ILockstepMember
     {
         readonly RomMachine _m;
-        public DriveMember(RomMachine m) => _m = m;
-        public long Cycles => _m.Drive!.Cycles;
+        readonly int _index;
+        public DriveMember(RomMachine m, int index) { _m = m; _index = index; }
+        Drive1541 Drive => _m.Drives[_index];
+        public long Cycles => Drive.Cycles;
         public double Hz => Drive1541.ClockHz;
-        public double NextAccessTime => _m.Drive!.Cpu.NextAccessCycle / Hz;
+        public double NextAccessTime => Drive.Cpu.NextAccessCycle / Hz;
 
         public void Step()
         {
-            var drive = _m.Drive!;
+            var drive = Drive;
             drive.Step();
-            if (drive.Mechanics.TakeWrites() && drive.Mechanics.Disk is { } disk) _m.DiskWritten?.Invoke(disk);
+            if (drive.Mechanics.TakeWrites() && drive.Mechanics.Disk is { } disk) _m.DriveWrote(_index, disk);
             if (drive.Cpu.StopReason != CpuStop.None)
-                _m.HaltReason = $"1541: {drive.Cpu.StopReason} at ${drive.Cpu.PC:X4} (opcode ${drive.Cpu.PeekOpcode():X2})";
+                _m.HaltReason = $"1541 (device {8 + _index}): {drive.Cpu.StopReason} at ${drive.Cpu.PC:X4} (opcode ${drive.Cpu.PeekOpcode():X2})";
         }
     }
 
@@ -178,7 +192,7 @@ public sealed class RomMachine
 
     // ---------- saved state ----------
     const string StateMagic = "C64ROMSTATE";
-    const int StateVersion = 2;                  // 2: the drive head's position inside a bit and its direction
+    const int StateVersion = 3;                  // 2: the drive head's position inside a bit and its direction; 3: the number of drives
 
     /// <summary>
     /// The whole machine as bytes: the processor, RAM and every chip of the C64, and the drive with its processor, RAM, VIAs, head
@@ -192,12 +206,13 @@ public sealed class RomMachine
         {
             w.Write(StateMagic);
             w.Write(StateVersion);
-            w.Write(Drive != null);
+            w.Write(Drives.Length > 0);
+            w.Write(Drives.Length);
             Cpu.SaveState(w);
             Bus.SaveState(w);
-            if (Drive != null)
+            if (Drives.Length > 0)
             {
-                Drive.SaveState(w);
+                foreach (var drive in Drives) drive.SaveState(w);
                 Iec!.SaveState(w);
             }
         }
@@ -215,14 +230,16 @@ public sealed class RomMachine
         int version = r.ReadInt32();
         if (version is < 1 or > StateVersion) throw new InvalidDataException($"state file version {version} is not supported");
         bool hadDrive = r.ReadBoolean();
-        if (hadDrive != (Drive != null)) throw new InvalidDataException(hadDrive ? "the state has a drive and this machine has none" : "this machine has a drive and the state has none");
+        int hadDrives = version >= 3 ? r.ReadInt32() : hadDrive ? 1 : 0;
+        if (hadDrives != Drives.Length && hadDrive && Drives.Length > 0) throw new InvalidDataException($"the state has {hadDrives} drive(s) and this machine has {Drives.Length}");
+        if (hadDrive != (Drives.Length > 0)) throw new InvalidDataException(hadDrive ? "the state has a drive and this machine has none" : "this machine has a drive and the state has none");
 
         HaltReason = null;
         Cpu.LoadState(r);          // first: the chips take their time from the processor's clock
         Bus.LoadState(r);
-        if (Drive != null)
+        if (Drives.Length > 0)
         {
-            Drive.LoadState(r, version);
+            foreach (var drive in Drives) drive.LoadState(r, version);
             Iec!.LoadState(r);
         }
         lock (_typed) _typed.Clear();
@@ -277,34 +294,53 @@ public sealed class RomMachine
         return string.Join("\n", rows);
     }
 
-    // ---------- the drive ----------
-    /// <summary>The file of the mounted disk image, or null for one that is only in memory.</summary>
-    public string? DiskPath { get; private set; }
-
-    /// <summary>True when changes the drive writes are saved back to <see cref="DiskPath"/>: a D64 is, a G64 (raw tracks of someone else's disk) is only with <see cref="SaveG64Changes"/>.</summary>
-    public bool DiskSavesChanges { get; private set; }
-
-    /// <summary>Puts a D64 or G64 image in the drive. It lives in memory only.</summary>
-    public void MountDisk(byte[] image)
+    // ---------- the drives ----------
+    sealed class DiskSlot
     {
-        DiskPath = null;
-        DiskSavesChanges = false;
-        Drive?.InsertDisk(GcrDisk.FromImage(image));
+        public string? Path;
+        public bool SavesChanges;
+    }
+
+    readonly DiskSlot[] _slots;
+
+    DiskSlot Slot(int device) =>
+        device - 8 is >= 0 and < 2 && device - 8 < _slots.Length ? _slots[device - 8] : throw new ArgumentOutOfRangeException(nameof(device), $"there is no drive with device number {device}");
+
+    /// <summary>The file of the disk image mounted in a drive (device 8 or 9), or null for one that is only in memory.</summary>
+    public string? DiskPathOf(int device) => Slot(device).Path;
+
+    /// <summary>True when changes the drive writes are saved back to <see cref="DiskPathOf"/>: a D64 is, a G64 (raw tracks of someone else's disk) is only with <see cref="SaveG64Changes"/>.</summary>
+    public bool DiskSavesChangesOf(int device) => Slot(device).SavesChanges;
+
+    /// <summary>The file of the disk image mounted in device 8, or null for one that is only in memory.</summary>
+    public string? DiskPath => _slots.Length > 0 ? _slots[0].Path : null;
+
+    /// <summary>True when changes the drive writes to device 8 are saved back to <see cref="DiskPath"/> (see <see cref="DiskSavesChangesOf"/>).</summary>
+    public bool DiskSavesChanges => _slots.Length > 0 && _slots[0].SavesChanges;
+
+    /// <summary>Puts a D64 or G64 image in a drive (device 8 or 9). It lives in memory only.</summary>
+    public void MountDisk(byte[] image, int device = 8)
+    {
+        var slot = Slot(device);
+        slot.Path = null;
+        slot.SavesChanges = false;
+        Drives[device - 8].InsertDisk(GcrDisk.FromImage(image));
     }
 
     /// <summary>
-    /// Puts the disk image in a file in the drive. A D64 is saved back whenever the drive has written to it (a missing one is created
-    /// blank); a G64 is read only unless <see cref="SaveG64Changes"/> is on, changes stay in memory.
+    /// Puts the disk image in a file in a drive (device 8 or 9). A D64 is saved back whenever the drive has written to it (a missing one
+    /// is created blank); a G64 is read only unless <see cref="SaveG64Changes"/> is on, changes stay in memory.
     /// </summary>
-    public void MountDiskFile(string path)
+    public void MountDiskFile(string path, int device = 8)
     {
+        var slot = Slot(device);
         bool g64 = path.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
         string extension = Path.GetExtension(path).ToLowerInvariant();
         if (extension is ".t64" or ".prg")
         {
             // a tape image or a single program: its files go on a blank disk (in memory only), to LOAD"NAME",8,1
-            MountDisk(DiskFromPrograms(path, extension));
-            DiskPath = path;
+            MountDisk(DiskFromPrograms(path, extension), device);
+            slot.Path = path;
             return;
         }
         byte[] image;
@@ -315,9 +351,9 @@ public sealed class RomMachine
             File.WriteAllBytes(path, image);
         }
         else throw new FileNotFoundException("disk image not found: " + path, path);
-        MountDisk(image);
-        DiskPath = path;
-        DiskSavesChanges = !g64 || SaveG64Changes;
+        MountDisk(image, device);
+        slot.Path = path;
+        slot.SavesChanges = !g64 || SaveG64Changes;
     }
 
     static byte[] DiskFromPrograms(string path, string extension)
@@ -335,21 +371,29 @@ public sealed class RomMachine
         return disk.ToArray();
     }
 
-    public void EjectDisk()
+    public void EjectDisk(int device = 8)
     {
-        DiskPath = null;
-        DiskSavesChanges = false;
-        Drive?.InsertDisk(null);
+        var slot = Slot(device);
+        slot.Path = null;
+        slot.SavesChanges = false;
+        Drives[device - 8].InsertDisk(null);
+    }
+
+    void DriveWrote(int index, GcrDisk disk)
+    {
+        SaveDiskFile(_slots[index], disk);
+        DiskWritten?.Invoke(disk);
     }
 
     /// <summary>
     /// Writes the disk back to its file: a D64 once the sectors on it are all readable again (not halfway through a format), a G64
     /// as the tracks are, after a copy of the original.
     /// </summary>
-    void SaveDiskFile(GcrDisk disk)
+    void SaveDiskFile(DiskSlot slot, GcrDisk disk)
     {
-        if (DiskPath == null || !DiskSavesChanges) return;
-        bool g64 = DiskPath.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
+        if (slot.Path == null || !slot.SavesChanges) return;
+        string path = slot.Path;
+        bool g64 = path.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
         byte[] bytes;
         if (g64) bytes = disk.ToG64();
         else
@@ -358,12 +402,12 @@ public sealed class RomMachine
             if (!report.Clean) return;
             bytes = d64;
         }
-        string temp = DiskPath + ".tmp";
+        string temp = path + ".tmp";
         try
         {
-            if (g64 && !File.Exists(DiskPath + ".bak") && File.Exists(DiskPath)) File.Copy(DiskPath, DiskPath + ".bak");
+            if (g64 && !File.Exists(path + ".bak") && File.Exists(path)) File.Copy(path, path + ".bak");
             File.WriteAllBytes(temp, bytes);
-            File.Move(temp, DiskPath, overwrite: true);
+            File.Move(temp, path, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -371,6 +415,6 @@ public sealed class RomMachine
         }
     }
 
-    /// <summary>The message of the last failure to save the disk file, or null.</summary>
+    /// <summary>The message of the last failure to save a disk file, or null.</summary>
     public string? SaveError { get; private set; }
 }

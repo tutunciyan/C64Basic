@@ -134,9 +134,12 @@ static unsafe partial class SdlHost
     {
         string title = _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)";
         if (machine.Halted) return title + " - stopped: " + machine.HaltReason;
-        var drive = machine.Drive?.Mechanics;
-        if (drive is { MotorOn: true })
-            title += $" - 1541: track {drive.Track:0.#}{(drive.Writing ? ", writing" : "")}";
+        for (int i = 0; i < machine.Drives.Length; i++)
+        {
+            var drive = machine.Drives[i].Mechanics;
+            if (drive.MotorOn)
+                title += $" - 1541{(machine.Drives.Length > 1 ? $" #{8 + i}" : "")}: track {drive.Track:0.#}{(drive.Writing ? ", writing" : "")}";
+        }
         return title;
     }
 

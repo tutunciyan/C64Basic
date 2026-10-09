@@ -20,7 +20,7 @@ const string Usage = """
       --fullscreen    start full screen
       --type <text>   type this text at startup (\n = RETURN)
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
-      --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11); a missing file is created blank
+      --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
@@ -126,16 +126,16 @@ if (romDir != null)
 {
     if (program != null || tape != null || strict)
     { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape or --strict (use --disk with a disk image)"); return 2; }
-    if (disks.Count > 1 || disks.Any(d => d.Device != 8))
-    { Console.Error.WriteLine("ROM mode has one drive, device 8: use a single --disk"); return 2; }
+    if (disks.Any(d => d.Device is not (8 or 9)) || disks.Select(d => d.Device).Distinct().Count() != disks.Count)
+    { Console.Error.WriteLine("ROM mode has up to two drives, devices 8 and 9: one --disk for each"); return 2; }
     try
     {
         var roms = RomSet.Find(romDir);
         foreach (string note in roms.Notes) Console.Error.WriteLine("ROM mode: " + note);
-        var machine = new RomMachine(roms);
+        var machine = new RomMachine(roms, driveCount: disks.Any(d => d.Device == 9) ? 2 : 1);
         machine.Bus.Sound.Model = sidModel;
         if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
-        if (disks.Count == 1) machine.MountDiskFile(disks[0].Path);
+        foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
         if (typeText != null) machine.Type(typeText);
         return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
     }

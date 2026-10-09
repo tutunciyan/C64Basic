@@ -7,6 +7,8 @@
   the repository).
 
 **ROM mode**
+- A second drive: `new RomMachine(roms, driveCount: 2)` / `--disk 9=file` puts another 1541 on the serial bus as device 9 (own processor,
+  DOS, disk and file, the same lockstep). `MountDiskFile(path, device)`, `DiskPathOf(device)`; saved states are version 3 and record the drive count.
 - The VIC-II stalls the processor cycle by cycle (BA/AEC) instead of adding the stolen cycles after the instruction: a read waits while BA
   is low (bad line: cycles 12-54, sprites: three cycles before to the end of their fetch), writes go through for three cycles, and the wait is
   in the instruction's own time, so what it reads after the wait is read late. Raster-exact code (stable raster, FLI) sees the real jitter.

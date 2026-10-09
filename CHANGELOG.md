@@ -1,6 +1,7 @@
 # Unreleased
 
 **Window**
+- A JOY button (Ctrl+J): the cursor keys become a joystick on port 1 or port 2 (Space or Right Ctrl = fire), for games that need one.
 - An OPEN button and Ctrl+O: the system file dialog to pick a disk, tape, cartridge, program or state file; in ROM mode a picked or dropped
   disk or tape resets and starts its first program.
 - A toolbar above the picture in both windows (buttons for reset, warp, state, copy/paste, screenshot, full screen, and in ROM mode pause, disk

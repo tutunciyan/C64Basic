@@ -52,9 +52,13 @@ static unsafe partial class SdlHost
         if (resume) LoadRomState(machine);
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
+        ToolButton joyButton = null!;
+        joyButton = new ToolButton { Label = "JOY-", Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(machine.Input, joyButton), On = () => _cursorJoystick != 0 };
+        _joyButton = joyButton;
         var buttons = new List<ToolButton>
         {
             new() { Label = "OPEN", Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },
+            joyButton,
             new() { Label = "RESET", Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
             new() { Label = "WARP", Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
             new() { Label = "PAUSE", Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
@@ -106,6 +110,7 @@ static unsafe partial class SdlHost
                 }
             }
 
+            if (_joystickReset) { _joystickReset = false; joystick = 0; }
             if (TakePickedFile() is { } picked) RomOpenFile(picked, machine);
 
             if (_statusMessage is { } message)
@@ -202,6 +207,7 @@ static unsafe partial class SdlHost
         }
 
         if (!repeat && control && code == Scancode.ScancodeO) { AskForFile(); return; }
+        if (!repeat && control && code == Scancode.ScancodeJ) { CycleCursorJoystick(machine.Input, _joyButton); return; }
         if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB) { RomSwapDisk(machine, code == Scancode.ScancodeN ? 1 : -1); return; }
         if (!repeat && control && code == Scancode.ScancodeT) { RomToggleTape(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeR) { RomRewindTape(machine); return; }
@@ -218,12 +224,12 @@ static unsafe partial class SdlHost
             return;
         }
 
-        byte bit = KeyMap.JoystickBit(code);
+        byte bit = JoystickBitFor(code);
         if (bit != 0)
         {
             joystick |= bit;
             machine.Input.SetJoystick(_keyboardPort, joystick);
-            return;
+            if (code != Scancode.ScancodeSpace) return;                    // Space is fire and still a space
         }
 
         if (!repeat && KeyMap.Matrix.TryGetValue(code, out var matrix))
@@ -276,12 +282,12 @@ static unsafe partial class SdlHost
         var code = key.Keysym.Scancode;
         if (code == Scancode.ScancodePagedown) machine.Input.SetRestore(false);
 
-        byte bit = KeyMap.JoystickBit(code);
+        byte bit = JoystickBitFor(code);
         if (bit != 0)
         {
             joystick &= (byte)~bit;
             machine.Input.SetJoystick(_keyboardPort, joystick);
-            return;
+            if (code != Scancode.ScancodeSpace) return;
         }
         if (KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) machine.Input.SetKey(k, false);

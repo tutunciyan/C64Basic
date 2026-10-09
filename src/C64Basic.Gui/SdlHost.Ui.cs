@@ -14,7 +14,7 @@ static unsafe partial class SdlHost
     /// <summary>One button of the toolbar. <see cref="On"/> says whether a toggle is switched on (the button is drawn lit).</summary>
     sealed class ToolButton
     {
-        public required string Label { get; init; }
+        public required string Label { get; set; }
         public required string Hint { get; init; }
         public required Action Click { get; init; }
         public Func<bool>? On { get; init; }
@@ -45,6 +45,40 @@ static unsafe partial class SdlHost
         _selection = null;
         _selecting = false;
         _hover = _pressed = -1;
+    }
+
+    // ---------- the cursor keys as a joystick ----------
+    // A game that wants a joystick can be played from the keyboard: with this on, the cursor keys are the stick and Space (or Right Ctrl)
+    // fire, on port 1 or port 2 (games differ: Ms. Pac-Man reads port 1, many read port 2). The numpad follows to the same port.
+    static ToolButton? _joyButton;
+    static int _cursorJoystick;                 // 0 = off (the cursor keys are C64 cursor keys), 1 or 2 = the port
+    static volatile bool _joystickReset;
+
+    static byte JoystickBitFor(Scancode code)
+    {
+        byte bit = KeyMap.JoystickBit(code);
+        if (bit != 0 || _cursorJoystick == 0) return bit;
+        return code switch
+        {
+            Scancode.ScancodeUp => 1,
+            Scancode.ScancodeDown => 2,
+            Scancode.ScancodeLeft => 4,
+            Scancode.ScancodeRight => 8,
+            Scancode.ScancodeSpace or Scancode.ScancodeRctrl => 16,
+            _ => 0,
+        };
+    }
+
+    /// <summary>JOY button / Ctrl+J: off, then cursor keys on port 1, then on port 2.</summary>
+    static void CycleCursorJoystick(IGameInput input, ToolButton? button)
+    {
+        input.SetJoystick(_keyboardPort, 0);
+        _cursorJoystick = (_cursorJoystick + 1) % 3;
+        if (_cursorJoystick != 0) _keyboardPort = _cursorJoystick;
+        _joystickReset = true;
+        if (button != null) button.Label = _cursorJoystick == 0 ? "JOY-" : "JOY" + _cursorJoystick;
+        _statusMessage = _cursorJoystick == 0 ? "cursor keys are cursor keys again"
+            : $"cursor keys = joystick {_cursorJoystick}, Space = fire (the numpad too)";
     }
 
     // ---------- the Open dialog ----------

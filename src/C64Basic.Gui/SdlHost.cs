@@ -85,9 +85,13 @@ static unsafe partial class SdlHost
         if (resume) LoadState();
 
         var frame = new uint[Vic2.FrameWidth * Vic2.FrameHeight];
+        ToolButton joyButton = null!;
+        joyButton = new ToolButton { Label = "JOY-", Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(console, joyButton), On = () => _cursorJoystick != 0 };
+        _joyButton = joyButton;
         SetUp(new[]
         {
             new ToolButton { Label = "OPEN", Hint = "pick a disk, tape, program or state file (Ctrl+O)", Click = AskForFile },
+            joyButton,
             new ToolButton { Label = "RESET", Hint = "reset the machine (F10)", Click = () => console.Inject("SYS64738\r") },
             new ToolButton { Label = "WARP", Hint = "warp speed (F9)", Click = () => interpreter.Warp = !interpreter.Warp, On = () => interpreter.Warp },
             new ToolButton { Label = "SAVE", Hint = "save the machine state (Ctrl+S)", Click = SaveState },
@@ -134,6 +138,7 @@ static unsafe partial class SdlHost
                 }
             }
 
+            if (_joystickReset) { _joystickReset = false; joystick = 0; }
             if (TakePickedFile() is { } picked) OpenFile(picked, interpreter, console);
 
             if (_statusMessage is { } message)
@@ -244,6 +249,7 @@ static unsafe partial class SdlHost
         }
 
         if (!repeat && control && code == Scancode.ScancodeO) { AskForFile(); return true; }
+        if (!repeat && control && code == Scancode.ScancodeJ) { CycleCursorJoystick(console, _joyButton); return true; }
 
         // machine state: Ctrl+S saves, Ctrl+L loads
         if (!repeat && control && code == Scancode.ScancodeS) { SaveState(); return true; }
@@ -262,12 +268,12 @@ static unsafe partial class SdlHost
             return true;
         }
 
-        byte bit = KeyMap.JoystickBit(code);
+        byte bit = JoystickBitFor(code);
         if (bit != 0)
         {
             joystick |= bit;
             console.SetJoystick(_keyboardPort, joystick);
-            return true;
+            if (code != Scancode.ScancodeSpace) return true;               // Space is fire and still a space
         }
 
         // Shift+Commodore (Alt) switches the character set, as on a real C64
@@ -289,12 +295,12 @@ static unsafe partial class SdlHost
         if (code == Scancode.ScancodeEscape) console.SetKey(63, false);
         if (code == Scancode.ScancodePagedown) console.SetRestore(false);
 
-        byte bit = KeyMap.JoystickBit(code);
+        byte bit = JoystickBitFor(code);
         if (bit != 0)
         {
             joystick &= (byte)~bit;
             console.SetJoystick(_keyboardPort, joystick);
-            return;
+            if (code != Scancode.ScancodeSpace) return;
         }
         if (KeyMap.Matrix.TryGetValue(code, out var matrix))
             foreach (int k in matrix) console.SetKey(k, false);

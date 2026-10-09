@@ -155,6 +155,9 @@ static unsafe partial class SdlHost
             }
     }
 
+    /// <summary>The pointer left the window: no button is under it any more.</summary>
+    static void UiPointerLeft() { _hover = -1; _pressed = -1; }
+
     static void ClearSelection() { _selection = null; _selecting = false; }
 
     // ---------- layout ----------
@@ -221,7 +224,7 @@ static unsafe partial class SdlHost
         if (over != _hover)
         {
             _hover = over;
-            if (over >= 0) _statusMessage = _buttons[over].Hint;
+            _hoverSince = Environment.TickCount64;
         }
         if (_selecting && _selection != null)
         {
@@ -248,6 +251,7 @@ static unsafe partial class SdlHost
             {
                 if (_pressed >= 0 && _pressed == over) _buttons[over].Click();
                 _pressed = -1;
+                _hoverSince = Environment.TickCount64;                         // the tooltip waits again after a click
             }
             return true;
         }
@@ -288,7 +292,7 @@ static unsafe partial class SdlHost
         Sdl.RenderClear(renderer);
         var target = new Rectangle<int>(_frameX, _frameY, _frameWidth, _frameHeight);
         Sdl.RenderCopy(renderer, texture, null, &target);
-        if (_barHeight > 0) DrawToolbar(renderer);
+        if (_barHeight > 0) { DrawToolbar(renderer); DrawTooltip(renderer); }
         Sdl.RenderPresent(renderer);
         UnDrawSelection(frame);
     }
@@ -307,6 +311,7 @@ static unsafe partial class SdlHost
             _barPixels = new uint[_outWidth * _barHeight];
         }
         Array.Fill(_barPixels, BarBackground);
+        (_canvas, _canvasWidth, _canvasHeight) = (_barPixels, _outWidth, _barHeight);
         int s = _glyphScale;
         for (int i = 0; i < _buttons.Count; i++)
         {
@@ -341,11 +346,51 @@ static unsafe partial class SdlHost
             }
     }
 
+    // the pixel buffer the drawing helpers write to: the toolbar's, or the tooltip's
+    static uint[] _canvas = Array.Empty<uint>();
+    static int _canvasWidth, _canvasHeight;
+
+    // ---------- tooltips ----------
+    const long TooltipDelayMilliseconds = 450;
+    const uint TooltipBackground = 0xFFFFF4C0, TooltipBorder = 0xFF23232D, TooltipText = 0xFF23232D;
+    static long _hoverSince;
+    static Texture* _tipTexture;
+    static int _tipTextureWidth, _tipTextureHeight;
+    static uint[] _tipPixels = Array.Empty<uint>();
+
+    /// <summary>A small label under a button the pointer has rested on, saying what it does and its key.</summary>
+    static void DrawTooltip(Renderer* renderer)
+    {
+        if (_hover < 0 || _hover >= _buttons.Count || _pressed >= 0 || _barHeight == 0) return;
+        if (Environment.TickCount64 - _hoverSince < TooltipDelayMilliseconds) return;
+        var button = _buttons[_hover];
+        if (button.X + button.Width > _outWidth) return;
+        int s = _glyphScale, padding = 3 * s;
+        string text = button.Hint;
+        int maxChars = Math.Max(1, (_outWidth - 2 * padding - 2 * s) / (8 * s));
+        if (text.Length > maxChars) text = text[..maxChars];
+        int width = text.Length * 8 * s + 2 * padding + 2 * s, height = 8 * s + 2 * padding + 2 * s;
+        if (_tipTexture == null || _tipTextureWidth != width || _tipTextureHeight != height)
+        {
+            if (_tipTexture != null) Sdl.DestroyTexture(_tipTexture);
+            _tipTexture = Sdl.CreateTexture(renderer, (uint)PixelFormatEnum.Argb8888, (int)TextureAccess.Streaming, width, height);
+            _tipTextureWidth = width; _tipTextureHeight = height;
+            _tipPixels = new uint[width * height];
+        }
+        (_canvas, _canvasWidth, _canvasHeight) = (_tipPixels, width, height);
+        FillRectangle(0, 0, width, height, TooltipBorder);
+        FillRectangle(s, s, width - 2 * s, height - 2 * s, TooltipBackground);
+        DrawText(text, s + padding, s + padding, TooltipText);
+        fixed (uint* pixels = _tipPixels) Sdl.UpdateTexture(_tipTexture, null, pixels, width * sizeof(uint));
+        var target = new Rectangle<int>(Math.Clamp(button.X, 0, Math.Max(0, _outWidth - width)), _barHeight + 2 * s, width, height);
+        Sdl.RenderCopy(renderer, _tipTexture, null, &target);
+    }
+
     static void FillRectangle(int x, int y, int width, int height, uint colour)
     {
-        for (int row = Math.Max(0, y); row < Math.Min(_barHeight, y + height); row++)
-            for (int column = Math.Max(0, x); column < Math.Min(_outWidth, x + width); column++)
-                _barPixels[row * _outWidth + column] = colour;
+        for (int row = Math.Max(0, y); row < Math.Min(_canvasHeight, y + height); row++)
+            for (int column = Math.Max(0, x); column < Math.Min(_canvasWidth, x + width); column++)
+                _canvas[row * _canvasWidth + column] = colour;
     }
 
     /// <summary>Text in the C64's own character set (upper case, digits and punctuation), at the glyph scale.</summary>
@@ -366,7 +411,7 @@ static unsafe partial class SdlHost
                         for (int dx = 0; dx < s; dx++)
                         {
                             int px = x + column * s + dx, py = y + row * s + dy;
-                            if (px >= 0 && px < _outWidth && py >= 0 && py < _barHeight) _barPixels[py * _outWidth + px] = colour;
+                            if (px >= 0 && px < _canvasWidth && py >= 0 && py < _canvasHeight) _canvas[py * _canvasWidth + px] = colour;
                         }
                 }
             }

@@ -102,6 +102,9 @@ static unsafe partial class SdlHost
                         if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, machine.Input);
                         break;
                     case EventType.Dropfile: RomDropFile(e.Drop.File, machine); break;
+                    case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.Leave:
+                        UiPointerLeft();
+                        break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         machine.Input.ReleaseAllKeys();
                         _mouseButtons = 0;

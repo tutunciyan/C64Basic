@@ -130,6 +130,9 @@ static unsafe partial class SdlHost
                         if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, console);
                         break;
                     case EventType.Dropfile: DropFile(e.Drop.File, interpreter, console); break;
+                    case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.Leave:
+                        UiPointerLeft();
+                        break;
                     case EventType.Windowevent when e.Window.Event == (byte)WindowEventID.FocusLost:
                         console.ReleaseAllKeys();
                         _mouseButtons = 0;

@@ -62,6 +62,13 @@ public sealed class Cpu6502
     /// <summary>The (edge-triggered) NMI line in native mode.</summary>
     public Func<bool>? NmiLine { get; set; }
 
+    /// <summary>
+    /// How a chip that takes the bus (the VIC-II) holds this processor up, in native mode: given the cycle an instruction starts on, its
+    /// length and which of its cycles are writes (bit n = cycle n; a halted 6502 waits in a read cycle but still gets a few writes in),
+    /// the number of extra cycles before it is through. See <see cref="Vic2.StallCycles"/>.
+    /// </summary>
+    public Func<long, int, int, int>? Stall { get; set; }
+
     public byte A, X, Y, SP = 0xFF, P = FlagU;
     public int PC;
     public long Cycles;
@@ -181,13 +188,21 @@ public sealed class Cpu6502
         int cycles = BaseCycles[op];
         if (cycles == 0)
         {
-            if (Native && UnstableCycles.TryGetValue(op, out int unstable)) { Cycles += unstable; ExecuteUnstable(op); return; }
+            if (Native && UnstableCycles.TryGetValue(op, out int unstable)) { Elapse(unstable, op); ExecuteUnstable(op); return; }
             StopReason = CpuStop.IllegalOpcode;
             PC = (PC - 1) & 0xFFFF;
             return;
         }
-        Cycles += cycles;
+        Elapse(cycles, op);
         Execute(op);
+    }
+
+    /// <summary>Advances the clock by an instruction's length, and by the cycles a chip holding the bus makes it wait.</summary>
+    void Elapse(int length, int op)
+    {
+        long start = Cycles;
+        Cycles += length;
+        if (Stall != null) Cycles += Stall(start, length, WriteCycles[op]);
     }
 
     // ---------- the unstable undocumented opcodes (native mode only) ----------
@@ -244,6 +259,7 @@ public sealed class Cpu6502
         P = FlagU | FlagI;
         PC = Word(0xFFFC);
         _nmiActive = false;
+        _stallAt = -1;
         StopReason = CpuStop.None;
         Cycles += 7;
     }
@@ -259,13 +275,26 @@ public sealed class Cpu6502
             int op = _mem.Read(PC & 0xFFFF);
             int length = BaseCycles[op];
             if (length == 0 && Native) UnstableCycles.TryGetValue(op, out length);
-            return Cycles + (length == 0 ? 1 : length) - 1;
+            if (length == 0) return Cycles;
+            return Cycles + length + StallOf(length, op) - 1;
         }
+    }
+
+    // the scheduler asks for this once per candidate and the step asks again, so the answer is kept for the cycle it was worked out on
+    long _stallAt = -1;
+    int _stallOp, _stallExtra;
+
+    int StallOf(int length, int op)
+    {
+        if (Stall == null) return 0;
+        if (_stallAt != Cycles || _stallOp != op) { _stallAt = Cycles; _stallOp = op; _stallExtra = Stall(Cycles, length, WriteCycles[op]); }
+        return _stallExtra;
     }
 
     /// <summary>Writes the registers and the clock of a native processor.</summary>
     public void SaveState(BinaryWriter w)
     {
+        AccessCycle = Cycles;                                  // the chips are saved as of the clock, as a loaded state will see it
         w.Write(A); w.Write(X); w.Write(Y); w.Write(SP); w.Write(P);
         w.Write(PC);
         w.Write(Cycles);
@@ -280,6 +309,7 @@ public sealed class Cpu6502
         Cycles = r.ReadInt64();
         _nmiActive = r.ReadBoolean();
         AccessCycle = Cycles;
+        _stallAt = -1;
         StopReason = CpuStop.None;
     }
 
@@ -307,7 +337,7 @@ public sealed class Cpu6502
 
     void EnterInterrupt(int vector)
     {
-        Cycles += 7;
+        Elapse(7, 0x00);                                       // the same cycles as BRK: two reads, three pushes, two reads
         Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
         SetFlag(FlagI, true);
         PC = Word(vector);
@@ -790,5 +820,34 @@ public sealed class Cpu6502
             }
         }
         return cycles;
+    }
+
+    /// <summary>
+    /// For each opcode, which of its cycles are writes (bit n = cycle n, counting from the opcode fetch), for the VIC-II's bus
+    /// stalls: the stores write in their last cycle, read-modify-write instructions in their last two (the old value, then the new),
+    /// PHA and PHP push in the last, JSR pushes in cycles 3 and 4, BRK and interrupt entry in cycles 2 to 4.
+    /// </summary>
+    static readonly int[] WriteCycles = BuildWriteCycles();
+
+    static int[] BuildWriteCycles()
+    {
+        var mask = new int[256];
+        int Last(int op, int count) => ((1 << count) - 1) << (BaseCycles[op] - count);
+        foreach (int op in new[] { 0x81, 0x85, 0x8D, 0x91, 0x95, 0x99, 0x9D, 0x84, 0x8C, 0x94, 0x86, 0x8E, 0x96, 0x48, 0x08 })
+            mask[op] = Last(op, 1);
+        foreach (int op in new[] { 0x06, 0x16, 0x0E, 0x1E, 0x26, 0x36, 0x2E, 0x3E, 0x46, 0x56, 0x4E, 0x5E, 0x66, 0x76, 0x6E, 0x7E,
+                                   0xC6, 0xD6, 0xCE, 0xDE, 0xE6, 0xF6, 0xEE, 0xFE })
+            mask[op] = Last(op, 2);
+        mask[0x20] = 1 << 3 | 1 << 4;
+        mask[0x00] = 1 << 2 | 1 << 3 | 1 << 4;
+        for (int op = 0; op < 256; op++)
+        {
+            if ((op & 3) != 3 || BaseCycles[op] == 0 || (op >> 2 & 7) == 2) continue;      // the undocumented read-modify-write and store group
+            int group = op >> 5;
+            if (group == 4) mask[op] = Last(op, 1);                                         // SAX
+            else if (group != 5) mask[op] = Last(op, 2);                                    // SLO, RLA, SRE, RRA, DCP, ISC
+        }
+        foreach (int op in new[] { 0x9F, 0x93, 0x9B, 0x9C, 0x9E }) mask[op] = 1 << UnstableCycles[op] - 1;
+        return mask;
     }
 }

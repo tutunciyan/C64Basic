@@ -291,15 +291,10 @@ public class DiskMechanicsTests
     [Fact]
     public void TheDosReadsTheDirectoryOfALocalG64Image()
     {
-        // a game image in samples/ (copyrighted, git-ignored): its raw tracks go through the same head and read channel
+        // a game image in roms/games (copyrighted, git-ignored): its raw tracks go through the same head and read channel
         var roms = TestRoms.Find();
         if (roms == null) return;
-        string? path = null;
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
-        {
-            string samples = Path.Combine(dir.FullName, "samples");
-            if (Directory.Exists(samples)) path = Directory.GetFiles(samples, "*.g64").FirstOrDefault();
-        }
+        string? path = TestRoms.FindGame("*.g64");
         if (path == null) return;
         var host = new IecHost(roms.Dos);
         host.Drive.InsertDisk(GcrDisk.FromImage(File.ReadAllBytes(path)));

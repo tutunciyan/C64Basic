@@ -506,12 +506,7 @@ public class RomMachineTests
     {
         var roms = TestRoms.Find();
         if (roms == null) return;
-        string? path = null;
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
-        {
-            string samples = Path.Combine(dir.FullName, "samples");
-            if (Directory.Exists(samples)) path = Directory.GetFiles(samples, "1943*.g64").FirstOrDefault();
-        }
+        string? path = TestRoms.FindGame("1943*.g64");
         if (path == null) return;
 
         var m = new RomMachine(roms);
@@ -524,7 +519,7 @@ public class RomMachineTests
         var other = new RomMachine(roms);
         other.LoadState(state);
         m.RunSeconds(8);
-        other.RunSeconds((m.Cycles - other.Cycles) / RomMachine.ClockHz);
+        other.RunSeconds(8);                                     // the state was taken where m is now (so both run to the same end)
         Assert.Equal(Signature(m), Signature(other));
         Assert.Equal(m.Bus.Ram, other.Bus.Ram);
     }
@@ -534,12 +529,7 @@ public class RomMachineTests
     {
         var roms = TestRoms.Find();
         if (roms == null) return;
-        string? path = null;
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null && path == null; dir = dir.Parent)
-        {
-            string samples = Path.Combine(dir.FullName, "samples");
-            if (Directory.Exists(samples)) path = Directory.GetFiles(samples, "1943*.g64").FirstOrDefault();
-        }
+        string? path = TestRoms.FindGame("1943*.g64");
         if (path == null) return;
 
         var m = new RomMachine(roms);

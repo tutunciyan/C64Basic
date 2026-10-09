@@ -18,6 +18,17 @@ public static class TestRoms
         }
         return null;
     }
+
+    /// <summary>The first local game image in <c>roms/games</c> that matches the pattern (copyrighted and git-ignored), or null.</summary>
+    public static string? FindGame(string pattern)
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            string games = Path.Combine(dir.FullName, "roms", "games");
+            if (Directory.Exists(games)) return Directory.GetFiles(games, pattern).FirstOrDefault();
+        }
+        return null;
+    }
 }
 
 /// <summary>

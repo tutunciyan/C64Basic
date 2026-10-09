@@ -1,3 +1,11 @@
+# Unreleased
+
+**ROM mode**
+- The VIC-II stalls the processor cycle by cycle (BA/AEC) instead of adding the stolen cycles after the instruction: a read waits while BA
+  is low (bad line: cycles 12-54, sprites: three cycles before to the end of their fetch), writes go through for three cycles, and the wait is
+  in the instruction's own time, so what it reads after the wait is read late. Raster-exact code (stable raster, FLI) sees the real jitter.
+- Saved states are taken as of the processor's clock (a CIA timer was one cycle early after a load).
+
 # 0.3.0
 
 **ROM mode: the real C64 ROMs and a real 1541**

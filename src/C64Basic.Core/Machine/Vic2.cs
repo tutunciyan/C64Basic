@@ -111,6 +111,84 @@ public sealed partial class Vic2 : IMemoryMapped
         return stolen;
     }
 
+    // ---------- BA and AEC: the processor halted cycle by cycle ----------
+    // The line the CPU's RDY pin is on (BA) goes low a few cycles before the VIC-II needs the bus; the 6502 stops in its first read cycle
+    // after that (writes carry on, three of them at most, which is why the chip warns three cycles ahead) and goes on when the line is
+    // high again. A cycle is counted from 0 in its line here; the beam's cycle 12 (1-based) is slot 11.
+    const int BadLineBaLow = 11, BadLineBaHigh = 54;     // BA low from cycle 12 to 54, 43 cycles, 40 of them with the bus taken
+    const int SpriteFirstAec = 57, BaWarning = 3, SpriteAecCycles = 2;     // sprite 0 takes the bus in cycles 58 and 59
+
+    int _stallVersion = 1, _stallSeenVersion;
+    long _stallFirstLine = long.MinValue;
+    readonly bool[] _stallBad = new bool[3];
+    readonly int[] _stallSprites = new int[3];
+
+    /// <summary>The extra cycles an instruction waits for the VIC-II (see <see cref="Cpu6502.Stall"/>); the clock is the processor's own cycle count.</summary>
+    public int StallCycles(long start, int length, int writeCycles)
+    {
+        long line = start / CyclesPerLine - 1;                    // the line before: its sprite fetches run over into this one
+        if (line != _stallFirstLine || _stallSeenVersion != _stallVersion)
+        {
+            _stallFirstLine = line;
+            _stallSeenVersion = _stallVersion;
+            for (int i = 0; i < 3; i++)
+            {
+                int n = (int)((line + i) % RasterLines);
+                if (n < 0) n += RasterLines;
+                _stallBad[i] = IsBadLine(n);
+                _stallSprites[i] = SpriteMaskOnLine((n + 1) % RasterLines);
+            }
+        }
+        if (!_stallBad[1] && !_stallBad[2] && _stallSprites[0] == 0 && _stallSprites[1] == 0 && _stallSprites[2] == 0) return 0;
+
+        int windows = ListBaLow(line);
+        long cycle = start;
+        for (int k = 0; k < length; k++, cycle++)
+        {
+            bool write = (writeCycles >> k & 1) != 0;
+            for (int w = 0; w < windows; w += 2)
+            {
+                long low = _stallWindows[w], high = _stallWindows[w + 1];
+                if (cycle < low || cycle >= high) continue;
+                if (!(write && cycle < low + BaWarning)) cycle = high;       // a write goes through while the chip is only warning
+                break;
+            }
+        }
+        return (int)(cycle - (start + length));
+    }
+
+    readonly long[] _stallWindows = new long[64];
+
+    /// <summary>
+    /// Lists, in time order, the stretches of cycles (low, high; high is the first cycle BA is high again) in which BA is low around the
+    /// lines starting at <paramref name="firstLine"/>: the bad line's, and a sprite's, three cycles before it takes the bus and until it
+    /// is through. Stretches that touch are one. Returns the number of numbers written.
+    /// </summary>
+    int ListBaLow(long firstLine)
+    {
+        int count = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            long lineStart = (firstLine + i) * CyclesPerLine;
+            if (i > 0 && _stallBad[i]) Add(ref count, lineStart + BadLineBaLow, lineStart + BadLineBaHigh);
+            if (i == 2) break;                                  // a sprite fetch two lines on is out of reach of one instruction
+            for (int mask = _stallSprites[i], k = 0; mask != 0; mask >>= 1, k++)
+            {
+                if ((mask & 1) == 0) continue;
+                long aec = lineStart + SpriteFirstAec + SpriteAecCycles * k;
+                Add(ref count, aec - BaWarning, aec + SpriteAecCycles);
+            }
+        }
+        return count;
+    }
+
+    void Add(ref int count, long low, long high)
+    {
+        if (count > 0 && low <= _stallWindows[count - 1]) { _stallWindows[count - 1] = Math.Max(high, _stallWindows[count - 1]); return; }
+        _stallWindows[count++] = low;
+        _stallWindows[count++] = high;
+    }
+
     long _lightPenFrame = -1;
 
     /// <summary>
@@ -202,6 +280,7 @@ public sealed partial class Vic2 : IMemoryMapped
     {
         int r = RegisterOf(address);
         if (r < 0) return;
+        _stallVersion++;
         switch (r)
         {
             case RasterLine:
@@ -239,6 +318,7 @@ public sealed partial class Vic2 : IMemoryMapped
         Machine.Bus.ReadExact(r, RegisterCount).CopyTo(_reg, 0);
         _rasterCompare = r.ReadInt32();
         _spriteSprite = r.ReadByte(); _spriteBackground = r.ReadByte();
+        _stallVersion++;
         _lastLine = CurrentLine;
         _log.Clear();
         _reg.CopyTo(_baseRegs, 0);

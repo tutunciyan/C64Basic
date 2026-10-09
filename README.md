@@ -256,6 +256,13 @@ Ctrl+S and Ctrl+L save and load the whole machine (`--state <file>`, `--resume`)
 and the disk as it is now. It is exact: a state taken in the middle of a fast load carries on to the same bytes as the original run.
 The window title shows the drive at work (`1541: track 18`, `writing`); `--iec-rise <us>` changes the serial bus rise time (below).
 
+The VIC-II holds the C64's processor up cycle by cycle (BA/AEC): BA goes low three cycles before the chip needs the bus (cycle 12 of a bad
+line, cycle 55 for the first sprite), the 6502 stops in its first read cycle after that, writes carry on for up to three cycles (a `STA` or
+an interrupt's pushes slip through), and it runs on when BA is high again (cycle 55 on a bad line). So a bad line costs a processor that
+reads 43 cycles (40 if it was pushing), a sprite 2 and the first of a row of sprites 3 more (8 sprites: 19). Stretches that are less than
+three cycles apart are one. The cost is worked out before the instruction runs, so a read of `$D012` or a CIA register after a stall sees
+the time after it, and the scheduler orders the processors by it. A page crossing or a taken branch (the cycle it adds) is not held up.
+
 How the two processors stay in step: the C64 (985248 Hz) and the drive (1 MHz) run in lockstep. The one whose next bus access, the data
 access in the last cycle of its next instruction, comes first takes the next step, so a store by one and a load by the other happen in
 the right order within a cycle. That is what a fast loader needs: the 1943 loader here sends two bits at a time with a window of a couple
@@ -265,8 +272,7 @@ not. If a fast loader that works on a real machine fails here, `--iec-rise` is t
 minute of emulated time, the same as the real machine, and `--fast` skips the speed limit.
 
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
-and bad lines, but not every cycle-level effect; the processor does not stall in the middle of an instruction when the VIC takes the
-bus), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
+and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
 The disk head reads and writes at the speed each track was recorded at, whatever the density bits say, a G64's per-byte speed tables
 are read but not written back, and half-tracks are read exactly but the stepper is a simple model (it cannot be left between two
 positions).

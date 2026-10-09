@@ -51,7 +51,7 @@ public sealed class RomMachine
         if (roms.Chargen != null) Bus.LoadCharacterRom(roms.Chargen);
         Bus.Input = Input;
 
-        Cpu = new Cpu6502((ICpuMemory)Bus) { IrqLine = () => Bus.IrqLine, NmiLine = () => Bus.NmiLine };
+        Cpu = new Cpu6502((ICpuMemory)Bus) { IrqLine = () => Bus.IrqLine, NmiLine = () => Bus.NmiLine, Stall = Bus.Vic.StallCycles };
         var c64 = new C64Member(this);
         if (withDrive)
         {
@@ -93,14 +93,12 @@ public sealed class RomMachine
         public void Step()
         {
             var cpu = _m.Cpu;
-            long before = cpu.Cycles;
             cpu.StepNative();
             if (cpu.StopReason != CpuStop.None)
             {
                 _m.HaltReason = $"{cpu.StopReason} at ${cpu.PC:X4} (opcode ${_m.Bus.Read(cpu.PC):X2})";
                 return;
             }
-            cpu.Cycles += _m.Bus.Vic.StolenCycles(_m.Bus.AbsoluteCycleOf(before), _m.Bus.AbsoluteCycleOf(cpu.Cycles));
         }
     }
 

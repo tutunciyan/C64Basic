@@ -202,6 +202,7 @@ public sealed class Cpu6502
     /// </summary>
     public void StepNative()
     {
+        AccessCycle = Cycles;                                  // the lines are sampled at the start of the step
         bool nmi = NmiLine?.Invoke() ?? false;
         bool edge = nmi && !_nmiActive;
         _nmiActive = nmi;

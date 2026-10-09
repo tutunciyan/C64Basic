@@ -1,4 +1,4 @@
-# Unreleased
+# 0.4.0
 
 **Window**
 - A JOY button (Ctrl+J): the cursor keys become a joystick on port 1 or port 2 (Space or Right Ctrl = fire), for games that need one.

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using C64Basic.Core.IO;
+using C64Basic.Core.Disk;
 using C64Basic.Core.Machine;
 using C64Basic.Core.Runtime;
 
@@ -35,6 +36,9 @@ public sealed class RomMachine
 
     /// <summary>The drives on the serial bus: device 8, and device 9 when the machine was made with two.</summary>
     public Drive1541[] Drives { get; }
+
+    /// <summary>The cassette recorder on the cassette port.</summary>
+    public Datasette Tape { get; } = new();
 
     public IecBus? Iec { get; }
 
@@ -112,6 +116,8 @@ public sealed class RomMachine
         public void Step()
         {
             var cpu = _m.Cpu;
+            var tape = _m.Tape;
+            if (tape.Active) tape.Update(cpu.Cycles, _m.Bus.CassetteMotor, _m.Bus.CassetteWrite, _m.Bus.Cia1.PulseFlag);
             cpu.StepNative();
             if (cpu.StopReason != CpuStop.None)
             {
@@ -192,7 +198,7 @@ public sealed class RomMachine
 
     // ---------- saved state ----------
     const string StateMagic = "C64ROMSTATE";
-    const int StateVersion = 3;                  // 2: the drive head's position inside a bit and its direction; 3: the number of drives
+    const int StateVersion = 4;                  // 2: the drive head's position inside a bit and its direction; 3: the number of drives; 4: the datasette
 
     /// <summary>
     /// The whole machine as bytes: the processor, RAM and every chip of the C64, and the drive with its processor, RAM, VIAs, head
@@ -215,6 +221,7 @@ public sealed class RomMachine
                 foreach (var drive in Drives) drive.SaveState(w);
                 Iec!.SaveState(w);
             }
+            Tape.SaveState(w);
         }
         return stream.ToArray();
     }
@@ -242,6 +249,7 @@ public sealed class RomMachine
             foreach (var drive in Drives) drive.LoadState(r, version);
             Iec!.LoadState(r);
         }
+        if (version >= 4) Tape.LoadState(r);
         lock (_typed) _typed.Clear();
     }
 
@@ -292,6 +300,83 @@ public sealed class RomMachine
         }
         while (rows.Count > 0 && rows[^1].Length == 0) rows.RemoveAt(rows.Count - 1);
         return string.Join("\n", rows);
+    }
+
+    // ---------- the tape ----------
+    /// <summary>The file of the tape image in the recorder, or null.</summary>
+    public string? TapePath { get; private set; }
+
+    /// <summary>
+    /// Puts a tape in the recorder with PLAY pressed (so <c>LOAD</c> and <c>SAVE</c> to device 1 find the sense switch closed and the
+    /// real KERNAL routines read and write its pulses). Pulses recorded by a <c>SAVE</c> are added to the tape when the motor stops.
+    /// </summary>
+    public void MountTape(TapImage tape)
+    {
+        TapePath = null;
+        Tape.Insert(tape);
+        Bus.CassettePlay = true;
+    }
+
+    /// <summary>
+    /// Puts a <c>.tap</c> (a missing one is created empty and written as pulses are recorded) or <c>.t64</c> (its programs are put on a
+    /// tape in the KERNAL's format, in memory only) in the recorder.
+    /// </summary>
+    public void MountTapeFile(string path)
+    {
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        TapImage tape;
+        if (extension == ".t64")
+        {
+            tape = new TapImage(null, Path.GetFileNameWithoutExtension(path).ToUpperInvariant());
+            var t64 = new T64Image(File.ReadAllBytes(path));
+            foreach (var entry in t64.Directory())
+                tape.Write(Path.GetFileNameWithoutExtension(entry.Name).ToUpperInvariant(), FileType.Prg, t64.Read(entry.Name).Data, replace: true);
+        }
+        else
+        {
+            bool exists = File.Exists(path);
+            tape = new TapImage(exists ? File.ReadAllBytes(path) : null, Path.GetFileNameWithoutExtension(path).ToUpperInvariant(),
+                bytes => SaveTapeFile(path, bytes));
+            if (!exists) SaveTapeFile(path, tape.ToArray());
+        }
+        MountTape(tape);
+        if (extension != ".t64") TapePath = path;
+    }
+
+    public void EjectTape()
+    {
+        Tape.Insert(null);
+        Bus.CassettePlay = false;
+        TapePath = null;
+    }
+
+    /// <summary>Lets go of PLAY: the sense switch opens (the KERNAL asks for it again) and the tape stands still.</summary>
+    public void StopTape()
+    {
+        Tape.Play = false;
+        Bus.CassettePlay = false;
+    }
+
+    /// <summary>Presses PLAY again.</summary>
+    public void PlayTape()
+    {
+        if (!Tape.Active) return;
+        Tape.Play = true;
+        Bus.CassettePlay = true;
+    }
+
+    void SaveTapeFile(string path, byte[] bytes)
+    {
+        try
+        {
+            string temp = path + ".tmp";
+            File.WriteAllBytes(temp, bytes);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            SaveError = e.Message;
+        }
     }
 
     // ---------- the drives ----------
@@ -347,7 +432,7 @@ public sealed class RomMachine
         if (File.Exists(path)) image = File.ReadAllBytes(path);
         else if (!g64)
         {
-            image = Disk.D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00").ToArray();
+            image = D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00").ToArray();
             File.WriteAllBytes(path, image);
         }
         else throw new FileNotFoundException("disk image not found: " + path, path);
@@ -358,15 +443,15 @@ public sealed class RomMachine
 
     static byte[] DiskFromPrograms(string path, string extension)
     {
-        var disk = Disk.D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00");
+        var disk = D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00");
         byte[] data = File.ReadAllBytes(path);
         if (extension == ".prg")
-            disk.Write(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), Disk.FileType.Prg, data, replace: false);
+            disk.Write(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), FileType.Prg, data, replace: false);
         else
         {
-            var tape = new Disk.T64Image(data);
+            var tape = new T64Image(data);
             foreach (var entry in tape.Directory())
-                disk.Write(Path.GetFileNameWithoutExtension(entry.Name).ToUpperInvariant(), Disk.FileType.Prg, tape.Read(entry.Name).Data, replace: true);
+                disk.Write(Path.GetFileNameWithoutExtension(entry.Name).ToUpperInvariant(), FileType.Prg, tape.Read(entry.Name).Data, replace: true);
         }
         return disk.ToArray();
     }

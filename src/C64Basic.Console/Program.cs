@@ -20,12 +20,12 @@ const string Usage = """
       --pixels        draw the real VIC-II picture (sprites, graphics modes) with half blocks instead of the text-only screen;
                       Esc = RUN/STOP, Ctrl+D quits; no sound (use the GUI)
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
-      --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty)
+      --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty); in ROM mode a datasette with PLAY pressed
       --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2; fast loaders need about 0.8 to 1.7)
       --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 instead of the built-in BASIC (needs the ROM
                       dumps in <d>; draws the picture like --pixels, so it needs a terminal; --disk mounts a .d64 or .g64, --fast
-                      skips the C64 speed limit; no program file, tape, --plain or --strict)
+                      skips the C64 speed limit; no program file, --plain or --strict)
       -h, --help      show this help
     """;
 
@@ -96,8 +96,8 @@ if (pixels && !PixelTerminal.Available)
 if (romDir != null)
 {
     if (!PixelTerminal.Available) { System.Console.Error.WriteLine("--rom-dir needs a terminal (input and output must not be redirected)"); return 2; }
-    if (file != null || tape != null || strict || plain || width != null)
-    { System.Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape, --plain, --width or --strict (use --disk with a disk image)"); return 2; }
+    if (file != null || strict || plain || width != null)
+    { System.Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, --plain, --width or --strict (use --disk with a disk image)"); return 2; }
     if (disks.Any(d => d.Device is not (8 or 9)) || disks.Select(d => d.Device).Distinct().Count() != disks.Count)
     { System.Console.Error.WriteLine("ROM mode has up to two drives, devices 8 and 9: one --disk for each"); return 2; }
     RomMachine machine;
@@ -107,6 +107,7 @@ if (romDir != null)
         foreach (string note in roms.Notes) System.Console.Error.WriteLine("ROM mode: " + note);
         machine = new RomMachine(roms, driveCount: disks.Any(d => d.Device == 9) ? 2 : 1);
         foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
+        if (tape != null) machine.MountTapeFile(tape);
     }
     catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
     {

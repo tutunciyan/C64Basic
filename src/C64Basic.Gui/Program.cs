@@ -21,7 +21,7 @@ const string Usage = """
       --type <text>   type this text at startup (\n = RETURN)
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
-      --tape <f>      mount a .t64 or .tap tape image as device 1
+      --tape <f>      mount a .t64 or .tap tape image as device 1 (in ROM mode: a datasette with PLAY pressed, the real KERNAL reads the pulses)
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
@@ -124,8 +124,8 @@ for (int i = 0; i < args.Length; i++)
 
 if (romDir != null)
 {
-    if (program != null || tape != null || strict)
-    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file, tape or --strict (use --disk with a disk image)"); return 2; }
+    if (program != null || strict)
+    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file or --strict (use --disk with a disk image)"); return 2; }
     if (disks.Any(d => d.Device is not (8 or 9)) || disks.Select(d => d.Device).Distinct().Count() != disks.Count)
     { Console.Error.WriteLine("ROM mode has up to two drives, devices 8 and 9: one --disk for each"); return 2; }
     try
@@ -136,6 +136,7 @@ if (romDir != null)
         machine.Bus.Sound.Model = sidModel;
         if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
         foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
+        if (tape != null) machine.MountTapeFile(tape);
         if (typeText != null) machine.Type(typeText);
         return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
     }

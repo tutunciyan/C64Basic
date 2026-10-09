@@ -218,7 +218,16 @@ public sealed class Bus : ICpuMemory
     int Port => RomMode ? (Ram[1] & Ram[0] | ~Ram[0] & 7) & 7 : Ram[1] & 7;
 
     /// <summary>What the processor reads at $01: output pins as written, input pins high.</summary>
-    int PortRead => Ram[1] & Ram[0] | ~Ram[0] & 0x37;
+    int PortRead => (Ram[1] & Ram[0] | ~Ram[0] & 0x37) & ~(CassettePlay && (Ram[0] & 0x10) == 0 ? 0x10 : 0);
+
+    /// <summary>A datasette button is down: the sense line (bit 4 of the processor port) reads low.</summary>
+    public bool CassettePlay { get; set; }
+
+    /// <summary>The cassette motor is on: the port's bit 5 is an output and low.</summary>
+    public bool CassetteMotor => RomMode && (Ram[0] & 0x20) != 0 && (Ram[1] & 0x20) == 0;
+
+    /// <summary>The level of the cassette write line (bit 3 of the processor port).</summary>
+    public bool CassetteWrite => (Ram[0] & 0x08) == 0 || (Ram[1] & 0x08) != 0;
 
     bool Banked => (Port & 3) != 0;
     bool IoVisible => Banked && (Port & 4) != 0;

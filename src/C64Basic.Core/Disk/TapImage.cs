@@ -48,6 +48,36 @@ public sealed class TapImage : IDiskDrive
         Decode();
     }
 
+    /// <summary>The length in CPU cycles of every pulse on the tape, in order (what a datasette feeds the CIA's FLAG pin).</summary>
+    public int[] PulseCycles()
+    {
+        var cycles = new List<int>(_pulses.Count);
+        for (int i = 0; i < _pulses.Count; i++)
+        {
+            int length = _pulses[i] * 8;
+            if (_pulses[i] == 0)
+            {
+                if (_version >= 1 && i + 3 < _pulses.Count) { length = _pulses[i + 1] | _pulses[i + 2] << 8 | _pulses[i + 3] << 16; i += 3; }
+                else length = 256 * 8;
+            }
+            cycles.Add(length);
+        }
+        return cycles.ToArray();
+    }
+
+    /// <summary>Adds recorded pulses (lengths in CPU cycles) at the end of the tape, then reads what the tape holds again.</summary>
+    public void AppendPulses(IEnumerable<int> cycles)
+    {
+        if (_version == 0) _version = 1;
+        foreach (int length in cycles)
+        {
+            if (length <= 255 * 8) _pulses.Add((byte)Math.Max(1, (length + 4) / 8));
+            else { _pulses.Add(0); _pulses.Add((byte)length); _pulses.Add((byte)(length >> 8)); _pulses.Add((byte)(length >> 16)); }
+        }
+        Decode();
+        Changed();
+    }
+
     // ---------- decoding ----------
     /// <summary>The pulse stream as S, M, L or G (a gap) in the order it occurs.</summary>
     string Classify()

@@ -7,6 +7,9 @@
   the repository).
 
 **ROM mode**
+- A datasette on the cassette port: `--tape` / `RomMachine.MountTape(File)` feeds a `.tap` (or a `.t64` converted to KERNAL format) to CIA 1's
+  FLAG pin while the motor line is on, with the sense switch closed; a `SAVE` records the write line's rising edges back to the tape (and a
+  `.tap` file). The real KERNAL loads from it and reads its own recordings; turbo loaders see real pulses. Saved states are version 4.
 - A second drive: `new RomMachine(roms, driveCount: 2)` / `--disk 9=file` puts another 1541 on the serial bus as device 9 (own processor,
   DOS, disk and file, the same lockstep). `MountDiskFile(path, device)`, `DiskPathOf(device)`; saved states are version 3 and record the drive count.
 - The VIC-II stalls the processor cycle by cycle (BA/AEC) instead of adding the stolen cycles after the instruction: a read waits while BA

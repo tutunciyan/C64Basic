@@ -248,7 +248,14 @@ serial bus as device 9, so `LOAD"X",8` and `SAVE"X",9` copy between disks; the w
 keeps the number of drives it was taken with.
 
 `--disk` also takes a `.t64` tape image or a single `.prg`: its programs go on a blank disk in memory (nothing is saved back), then
-`LOAD"NAME",8,1` and `RUN` as usual. There is no datasette in ROM mode.
+`LOAD"NAME",8,1` and `RUN` as usual.
+
+`--tape <f>` in ROM mode is a datasette on the cassette port with PLAY pressed: a `.tap` is fed to CIA 1's FLAG pin pulse by pulse
+while the KERNAL's motor line (bit 5 of the processor port) is low, so the real tape routines (and turbo loaders) read it, the sense switch
+(bit 4) reads closed, and `LOAD` / `SAVE` without a device number use the tape, with the KERNAL's own timing (a program takes a minute or two
+of emulated time). A `SAVE` records the rising edges of the write line (bit 3) as pulses and adds them to the tape when the motor stops; a
+missing `.tap` is created empty and written. A `.t64` is put on a tape in the KERNAL's format, in memory. A saved state keeps the tape position
+(the tape file itself is mounted again by the host). There is no PLAY/STOP/REWIND button yet: `RomMachine.StopTape`, `PlayTape` and `Tape.Rewind` are the API.
 
 The drive **writes**, too: the write head puts what the DOS sends on the track, so `SAVE`, `SCRATCH`, `VALIDATE`, block commands and a
 full `NEW` (format) work against the real DOS. A mounted `.d64` file is saved back after every write (once all its sectors read cleanly
@@ -281,7 +288,7 @@ loads every `.d64`, `.g64`, `.t64` and `.prg` there and lists its directory, and
 and Ms. Pac-Man (a T64, put on a blank disk). To add a game, drop the image there and add a row to that file.
 
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
-and bad lines, but not every cycle-level effect), there is no tape, REU or cartridge, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
+and bad lines, but not every cycle-level effect), there is no REU or cartridge, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
 The disk head counts its cells at the speed the density bits (PB5-PB6 of VIA 2) select, as the real one does, and the disk turns at 300 rpm
 whatever they say: with the density a track was recorded at every bit is read as recorded, with another one the stream is sampled at the wrong
 rate (a bit is missed or seen twice), so code that sets the density wrong, or a protection that records at an odd speed, sees what it would on

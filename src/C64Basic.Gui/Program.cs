@@ -30,6 +30,7 @@ const string Usage = """
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2). Fast loaders need about 0.8 to 1.7;
                       change it only if one that works on a real machine does not
+      --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
                       the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
                       copy protection work. Typing, the joystick, the mouse and Ctrl+S / Ctrl+L (--state, --resume) work as usual; no program file argument, tape or --strict
@@ -101,6 +102,9 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !double.TryParse(args[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rise) || rise < 0 || rise > 10)
             { Console.Error.WriteLine("--iec-rise needs a number of microseconds from 0 to 10"); return 2; }
             RomMachine.IecRiseSeconds = rise * 1e-6;
+            break;
+        case "--write-g64":
+            RomMachine.SaveG64Changes = true;
             break;
         case "--rom-dir":
             if (++i >= args.Length) { Console.Error.WriteLine("--rom-dir needs a folder with the ROM dumps"); return 2; }

@@ -46,7 +46,7 @@ static unsafe partial class SdlHost
 
         bool running = true;
         machine.DiskWritten += _ => _statusMessage = machine.SaveError != null ? "could not save the disk: " + machine.SaveError
-            : machine.DiskSavesChanges ? "disk saved" : "disk written (not saved: a G64 is read only)";
+            : machine.DiskSavesChanges ? "disk saved" : "disk written (not saved: a G64 is read only, see --write-g64)";
         var worker = new System.Threading.Thread(() => machine.RunPaced(() => !running, () => _romWarp))
         { IsBackground = true, Name = "C64 ROM mode" };
         worker.Start();

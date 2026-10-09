@@ -7,7 +7,10 @@ namespace C64Basic.Core.Rom;
 /// turns the bit stream of the current track into what the drive's processor sees: a data byte on VIA 2 port A, the SYNC signal on
 /// PB7 (low while ten or more 1 bits go by), and a pulse on the byte-ready line every eight bits after that, which sets the V flag
 /// (through the SO pin, when CA2 enables it) and is also an edge on CA1. Bits go by at the speed of the zone the track was recorded
-/// in: 3.25, 3.5, 3.75 or 4 cycles per bit from the outer zone in, so a 7692-byte track takes 200 ms (300 rpm).
+/// in: 3.25, 3.5, 3.75 or 4 cycles per bit from the outer zone in, so a 7692-byte track takes 200 ms (300 rpm). The read channel
+/// counts cells at the speed the density bits on PB5-PB6 select, not the speed the track was recorded at: with the right density
+/// every bit is read as it was recorded, with another one the stream is sampled at the wrong rate (a bit may be missed or seen twice)
+/// as on a real drive, so code that sets the density wrongly, or protection that records at an odd speed, behaves as it would there.
 /// The time of the disk is the drive's own processor clock, brought up to date whenever the processor touches a VIA or finishes
 /// an instruction.
 /// </summary>
@@ -22,6 +25,8 @@ public sealed class DiskMechanics
     int _slot;                       // the half-track under the head: 0 is track 1
     byte[]? _track;
     int _bitPos;                     // the bit about to pass under the head
+    int _frac;                       // how far into that bit the head is, in 1/65536 (not zero only after reading at another density than the track's)
+    int _direction = 1;              // which way the head last moved (a jump of two phases carries on that way)
     int _phase;                      // the stepper's phase, PB0-PB1 of VIA 2
     bool _motor;
     long _next16;                    // when the next bit completes, in sixteenths of a cycle
@@ -48,7 +53,7 @@ public sealed class DiskMechanics
     /// <summary>The red LED: PB3 of VIA 2.</summary>
     public bool Led { get; private set; }
 
-    /// <summary>The density bits the DOS sets on PB5-PB6 (informational: bits go by at the speed the track was recorded at).</summary>
+    /// <summary>The density bits the DOS sets on PB5-PB6: the speed zone the read and write channels count their cells at.</summary>
     public int Density { get; private set; }
 
     /// <summary>True while the head is over a sync mark (ten or more 1 bits in a row).</summary>
@@ -106,6 +111,7 @@ public sealed class DiskMechanics
         int bits = TrackBits;
         _bitPos = keepAngle && oldBits > 0 && bits > 0 ? (int)((long)_bitPos * bits / oldBits) : 0;
         if (bits > 0 && _bitPos >= bits) _bitPos = 0;
+        _frac = 0;
     }
 
     // ---------- the chip side ----------
@@ -138,11 +144,13 @@ public sealed class DiskMechanics
         {
             _phase = phase;
             // The rotor is pulled to the nearest position that matches the energised phase (position = phase, modulo 4): one step
-            // forward moves the head a half-track towards the centre of the disk, one back towards the edge. A stop at each edge
-            // holds it, whatever the phase says afterwards.
+            // forward moves the head a half-track towards the centre of the disk, one back towards the edge. The opposite coil
+            // (a jump of two) pulls both ways alike, so the rotor goes on the way it was already going. A stop at each edge holds
+            // it, whatever the phase says afterwards.
             int delta = (phase - _slot) & 3;
-            int slot = _slot + (delta == 1 ? 1 : delta == 3 ? -1 : 0);
-            slot = Math.Clamp(slot, 0, GcrDisk.Slots - 1);
+            int move = delta == 1 ? 1 : delta == 3 ? -1 : delta == 2 ? 2 * _direction : 0;
+            int slot = Math.Clamp(_slot + move, 0, GcrDisk.Slots - 1);
+            if (move != 0) _direction = move > 0 ? 1 : -1;
             if (slot != _slot) SelectTrack(slot, keepAngle: true);
         }
 
@@ -163,9 +171,10 @@ public sealed class DiskMechanics
         w.Write(_writeShift); w.Write(_writeCount);
         w.Write(Led); w.Write(Density); w.Write(Revolutions); w.Write(BytesRead); w.Write(BytesWritten);
         w.Write(_sensorBlockedUntil);
+        w.Write(_frac); w.Write(_direction);                  // state version 2
     }
 
-    public void LoadState(BinaryReader r)
+    public void LoadState(BinaryReader r, int version = 2)
     {
         _disk = r.ReadBoolean() ? GcrDisk.LoadState(r) : null;
         _slot = r.ReadInt32(); _bitPos = r.ReadInt32(); _phase = r.ReadInt32(); _motor = r.ReadBoolean();
@@ -175,6 +184,8 @@ public sealed class DiskMechanics
         _writeShift = r.ReadByte(); _writeCount = r.ReadInt32();
         Led = r.ReadBoolean(); Density = r.ReadInt32(); Revolutions = r.ReadInt64(); BytesRead = r.ReadInt64(); BytesWritten = r.ReadInt64();
         _sensorBlockedUntil = r.ReadInt64();
+        if (version >= 2) { _frac = r.ReadInt32(); _direction = r.ReadInt32() >= 0 ? 1 : -1; }
+        else { _frac = 0; _direction = 1; }
         _track = _disk?.Tracks[Math.Clamp(_slot, 0, GcrDisk.Slots - 1)];
         if (_track != null && _bitPos >= _track.Length * 8) _bitPos = 0;
     }
@@ -187,7 +198,7 @@ public sealed class DiskMechanics
         if (write == _writing) return;
         _writing = write;
         _writeActive = false;
-        if (write) return;
+        if (write) { _frac = 0; return; }
         _shift = 0;                                        // back to reading: look for a sync mark again
         _bitCount = 0;
         _sync = false;
@@ -195,7 +206,7 @@ public sealed class DiskMechanics
     }
 
     // ---------- time ----------
-    int CellAt(int bitPos) => CellTicks[_disk == null ? 3 : _disk.SpeedAt(_slot, bitPos >> 3)];
+    int ZoneAt(int bitPos) => _disk == null ? 3 : _disk.SpeedAt(_slot, bitPos >> 3);
 
     /// <summary>Lets the disk turn up to the given drive cycle, delivering every byte and sync edge on the way.</summary>
     public void AdvanceTo(long cycle)
@@ -214,9 +225,14 @@ public sealed class DiskMechanics
         while (_next16 <= target)
         {
             int position = _bitPos;
-            int bit = _track[position >> 3] >> (7 - (position & 7)) & 1;
-            int cell = CellAt(position);
-            if (++_bitPos >= bits) { _bitPos = 0; Revolutions++; }
+            int cell = CellTicks[Density];
+            int bit;
+            if (!_writing && (_frac != 0 || ZoneAt(position) != Density)) bit = Resample(position, cell, bits);
+            else
+            {
+                bit = _track[position >> 3] >> (7 - (position & 7)) & 1;
+                if (++_bitPos >= bits) { _bitPos = 0; Revolutions++; }
+            }
             _next16 += cell;
             ReleaseByteReady(_next16);
 
@@ -225,6 +241,7 @@ public sealed class DiskMechanics
                 // the head writes the bit under it: the byte the processor put in port A, most significant bit first
                 if (_disk is { WriteProtected: false })
                 {
+                    _disk.SetSpeed(_slot, position >> 3, Density);           // the bit goes onto the disk at the density the drive is set to
                     int mask = 0x80 >> (position & 7);
                     if ((_writeShift & 0x80) != 0) _track[position >> 3] |= (byte)mask; else _track[position >> 3] &= (byte)~mask;
                     _disk.Modified = true;
@@ -265,6 +282,27 @@ public sealed class DiskMechanics
             }
         }
         ReleaseByteReady(target);
+    }
+
+    /// <summary>
+    /// One cell of the read channel at a density that is not the one the track was recorded at: the head moves on by the ratio of the
+    /// two cell lengths, and the bit it reports is 1 if the middle of any recorded bit (where its flux transition is) passed under it
+    /// during the cell. At equal speeds that is exactly the next recorded bit.
+    /// </summary>
+    int Resample(int position, int cell, int bits)
+    {
+        long ratio = ((long)cell << 16) / CellTicks[ZoneAt(position)];
+        long from = (long)position << 16 | (uint)_frac, to = from + ratio;
+        int bit = 0;
+        for (long i = (from - 0x8000 + 0xFFFF) >> 16; i <= (to - 0x8001) >> 16; i++)       // the bits whose middle is in [from, to)
+        {
+            int n = (int)(i % bits);
+            bit |= _track![n >> 3] >> (7 - (n & 7)) & 1;
+        }
+        _bitPos = (int)(to >> 16);
+        _frac = (int)(to & 0xFFFF);
+        if (_bitPos >= bits) { _bitPos %= bits; Revolutions++; }
+        return bit;
     }
 
     void ByteReady(long at16)

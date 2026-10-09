@@ -19,6 +19,13 @@ public sealed class RomMachine
     /// <summary>How long a released serial line takes to go high (see <see cref="IecBus.RiseDelay"/>).</summary>
     public static double IecRiseSeconds { get; set; } = 1.2e-6;
 
+    /// <summary>
+    /// Whether a mounted G64 file is written back when the drive writes to it (off: a G64 is someone's raw tracks, kept as they were,
+    /// and changes live in memory). On, the file is rewritten from the tracks as they are now, speeds included; the first time, the
+    /// original is copied to <c>name.g64.bak</c>.
+    /// </summary>
+    public static bool SaveG64Changes { get; set; }
+
     public Bus Bus { get; }
     public Cpu6502 Cpu { get; }
     public InputState Input { get; } = new();
@@ -171,7 +178,7 @@ public sealed class RomMachine
 
     // ---------- saved state ----------
     const string StateMagic = "C64ROMSTATE";
-    const int StateVersion = 1;
+    const int StateVersion = 2;                  // 2: the drive head's position inside a bit and its direction
 
     /// <summary>
     /// The whole machine as bytes: the processor, RAM and every chip of the C64, and the drive with its processor, RAM, VIAs, head
@@ -206,7 +213,7 @@ public sealed class RomMachine
         catch (Exception e) when (e is EndOfStreamException or IOException or ArgumentException) { throw new InvalidDataException("not a ROM mode state file"); }
         if (magic != StateMagic) throw new InvalidDataException("not a ROM mode state file");
         int version = r.ReadInt32();
-        if (version != StateVersion) throw new InvalidDataException($"state file version {version} is not supported");
+        if (version is < 1 or > StateVersion) throw new InvalidDataException($"state file version {version} is not supported");
         bool hadDrive = r.ReadBoolean();
         if (hadDrive != (Drive != null)) throw new InvalidDataException(hadDrive ? "the state has a drive and this machine has none" : "this machine has a drive and the state has none");
 
@@ -215,7 +222,7 @@ public sealed class RomMachine
         Bus.LoadState(r);
         if (Drive != null)
         {
-            Drive.LoadState(r);
+            Drive.LoadState(r, version);
             Iec!.LoadState(r);
         }
         lock (_typed) _typed.Clear();
@@ -274,7 +281,7 @@ public sealed class RomMachine
     /// <summary>The file of the mounted disk image, or null for one that is only in memory.</summary>
     public string? DiskPath { get; private set; }
 
-    /// <summary>True when changes the drive writes are saved back to <see cref="DiskPath"/>: a D64 is, a G64 (raw tracks of someone else's disk) is not.</summary>
+    /// <summary>True when changes the drive writes are saved back to <see cref="DiskPath"/>: a D64 is, a G64 (raw tracks of someone else's disk) is only with <see cref="SaveG64Changes"/>.</summary>
     public bool DiskSavesChanges { get; private set; }
 
     /// <summary>Puts a D64 or G64 image in the drive. It lives in memory only.</summary>
@@ -287,7 +294,7 @@ public sealed class RomMachine
 
     /// <summary>
     /// Puts the disk image in a file in the drive. A D64 is saved back whenever the drive has written to it (a missing one is created
-    /// blank); a G64 is read only, changes stay in memory.
+    /// blank); a G64 is read only unless <see cref="SaveG64Changes"/> is on, changes stay in memory.
     /// </summary>
     public void MountDiskFile(string path)
     {
@@ -310,7 +317,7 @@ public sealed class RomMachine
         else throw new FileNotFoundException("disk image not found: " + path, path);
         MountDisk(image);
         DiskPath = path;
-        DiskSavesChanges = !g64;
+        DiskSavesChanges = !g64 || SaveG64Changes;
     }
 
     static byte[] DiskFromPrograms(string path, string extension)
@@ -335,16 +342,27 @@ public sealed class RomMachine
         Drive?.InsertDisk(null);
     }
 
-    /// <summary>Writes the disk back to its D64 file once the sectors on it are all readable again (not halfway through a format).</summary>
+    /// <summary>
+    /// Writes the disk back to its file: a D64 once the sectors on it are all readable again (not halfway through a format), a G64
+    /// as the tracks are, after a copy of the original.
+    /// </summary>
     void SaveDiskFile(GcrDisk disk)
     {
         if (DiskPath == null || !DiskSavesChanges) return;
-        var (d64, report) = disk.ToD64();
-        if (!report.Clean) return;
+        bool g64 = DiskPath.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
+        byte[] bytes;
+        if (g64) bytes = disk.ToG64();
+        else
+        {
+            var (d64, report) = disk.ToD64();
+            if (!report.Clean) return;
+            bytes = d64;
+        }
         string temp = DiskPath + ".tmp";
         try
         {
-            File.WriteAllBytes(temp, d64);
+            if (g64 && !File.Exists(DiskPath + ".bak") && File.Exists(DiskPath)) File.Copy(DiskPath, DiskPath + ".bak");
+            File.WriteAllBytes(temp, bytes);
             File.Move(temp, DiskPath, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

@@ -62,13 +62,13 @@ public sealed class Drive1541 : ILockstepMember
         Mechanics.SaveState(w);
     }
 
-    public void LoadState(BinaryReader r)
+    public void LoadState(BinaryReader r, int version = 2)
     {
         Cpu.LoadState(r);
         Bus.ReadExact(r, RamSize).CopyTo(Ram, 0);
         Via1.LoadState(r);
         Via2.LoadState(r);
-        Mechanics.LoadState(r);
+        Mechanics.LoadState(r, version);
     }
 
     // ---------- ILockstepMember ----------

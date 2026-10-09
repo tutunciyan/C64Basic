@@ -6,6 +6,11 @@
   in the instruction's own time, so what it reads after the wait is read late. Raster-exact code (stable raster, FLI) sees the real jitter.
 - `GameCorpusTests`: real game images from `roms/games` (1943, International Karate Plus, Ms. Pac-Man) are loaded and started in ROM mode,
   and every image there has its directory listed. The tests skip where the images are not.
+- The disk read channel honours the density bits: cells are counted at the drive's density, the head moves over the recorded bits by the
+  ratio of the two speeds (a wrong density misreads, the disk still turns at 300 rpm). Writes are recorded at the drive's density, with a
+  per-byte speed table where it differs; G64 images keep those tables when written. `--write-g64` saves what the drive writes to a mounted
+  G64 (the first time the original is copied to `.g64.bak`). A two-phase stepper jump carries on the way the head was going.
+  Saved states are version 2 (version 1 still loads).
 - Saved states are taken as of the processor's clock (a CIA timer was one cycle early after a load).
 
 # 0.3.0

@@ -41,6 +41,28 @@ public sealed class GcrDisk
         return i < table.Length ? table[i] >> ((byteIndex & 3) * 2) & 3 : 0;
     }
 
+    /// <summary>
+    /// Records a byte of a half-track at a speed zone (what the write head does: the bits go onto the disk at the density the drive is
+    /// set to). A track that was all one zone gets a per-byte speed table the first time a byte differs.
+    /// </summary>
+    public void SetSpeed(int slot, int byteIndex, int zone)
+    {
+        var track = Tracks[slot];
+        if (track == null || (uint)byteIndex >= (uint)track.Length) return;
+        if (Speeds[slot] == zone) return;
+        var table = SpeedTables[slot];
+        if (Speeds[slot] >= 0)
+        {
+            table = new byte[(track.Length + 3) / 4];
+            Array.Fill(table, (byte)(Speeds[slot] * 0x55));
+            SpeedTables[slot] = table;
+            Speeds[slot] = -1;
+        }
+        if (table == null) return;
+        int shift = (byteIndex & 3) * 2;
+        table[byteIndex >> 2] = (byte)(table[byteIndex >> 2] & ~(3 << shift) | zone << shift);
+    }
+
     public static bool IsG64(ReadOnlySpan<byte> data) => G64Image.IsG64(data);
 
     /// <summary>Reads a G64 image. Track data is taken exactly as stored, including half-tracks and tracks beyond 35.</summary>
@@ -83,7 +105,10 @@ public sealed class GcrDisk
 
     const int MaxTrackBytes = 7928;
 
-    /// <summary>The disk as a G64 image: every track as it is now, written changes included.</summary>
+    /// <summary>
+    /// The disk as a G64 image: every track as it is now, written changes included. A track that changes speed along the way keeps its
+    /// per-byte speed table, stored after the tracks.
+    /// </summary>
     public byte[] ToG64()
     {
         int blockSize = Math.Max(MaxTrackBytes, Tracks.Max(t => t?.Length ?? 0));
@@ -92,20 +117,34 @@ public sealed class GcrDisk
         output[9] = Slots;
         BitConverter.GetBytes((ushort)blockSize).CopyTo(output, 10);
         int at = HeaderSize + Slots * 8, used = at;
+        var tables = new List<(int Slot, byte[] Table)>();
         for (int slot = 0; slot < Slots; slot++)
         {
             var track = Tracks[slot];
             if (track == null) continue;
             BitConverter.GetBytes(at).CopyTo(output, HeaderSize + slot * 4);
             int speed = Speeds[slot];
-            if (speed < 0) speed = 0;                          // a per-byte speed table is not written back; the track keeps one zone
+            if (speed < 0)
+            {
+                if (SpeedTables[slot] is { } table) tables.Add((slot, table));
+                speed = 0;
+            }
             BitConverter.GetBytes(speed).CopyTo(output, HeaderSize + Slots * 4 + slot * 4);
             output[at] = (byte)(track.Length & 0xFF); output[at + 1] = (byte)(track.Length >> 8);
             track.CopyTo(output, at + 2);
             at += 2 + blockSize;
             used = at;
         }
-        return output.AsSpan(0, used).ToArray();
+        if (tables.Count == 0) return output.AsSpan(0, used).ToArray();
+        var image = new byte[used + tables.Sum(t => t.Table.Length)];
+        output.AsSpan(0, used).CopyTo(image);
+        foreach (var (slot, table) in tables)
+        {
+            BitConverter.GetBytes(used).CopyTo(image, HeaderSize + Slots * 4 + slot * 4);
+            table.CopyTo(image, used);
+            used += table.Length;
+        }
+        return image;
     }
 
     public void SaveState(BinaryWriter w)

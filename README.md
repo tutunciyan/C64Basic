@@ -95,7 +95,7 @@ The core has no console dependency. A GUI only needs to implement `IConsoleDevic
   through the command channel (`GET#15,A$`, one byte unless a count is given; afterwards the channel reports the status again). The ROM
   area reads as zero, and `M-E` answers `31, SYNTAX ERROR` because there is no drive processor to run code.
 - **G64 images**: `--disk game.g64` (or dropping the file on the window) decodes the raw GCR tracks into the 683 ordinary sectors and mounts
-  them as a read-only drive (changes stay in memory; the file is never written). A report on stderr says how many sectors were read cleanly
+  them as a read-only drive (changes stay in memory; the file is never written, unless ROM mode is asked to with `--write-g64`). A report on stderr says how many sectors were read cleanly
   and flags anything unusual: half-tracks, tracks past 35, bad checksums, odd speed zones. This only gets the *files* out. Most commercial
   games on G64s boot through a fast loader that uploads code to the drive with `M-W` and starts it with `M-E`, which needs a real 1541
   processor, and some rely on the real BASIC ROM's stack behaviour; those will list and load file by file but not start.
@@ -278,9 +278,14 @@ and Ms. Pac-Man (a T64, put on a blank disk). To add a game, drop the image ther
 
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
 and bad lines, but not every cycle-level effect), there is no tape, REU, cartridge or second drive, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
-The disk head reads and writes at the speed each track was recorded at, whatever the density bits say, a G64's per-byte speed tables
-are read but not written back, and half-tracks are read exactly but the stepper is a simple model (it cannot be left between two
-positions).
+The disk head counts its cells at the speed the density bits (PB5-PB6 of VIA 2) select, as the real one does, and the disk turns at 300 rpm
+whatever they say: with the density a track was recorded at every bit is read as recorded, with another one the stream is sampled at the wrong
+rate (a bit is missed or seen twice), so code that sets the density wrong, or a protection that records at an odd speed, sees what it would on
+a real drive. What the head writes is recorded at the density it is set to, so a track can end up with bytes of different speeds; a G64
+keeps those (and any per-byte speed table it came with) when it is written back. A mounted G64 is only written back with `--write-g64`
+(then the file is rewritten from the tracks, and the first time the original is copied to `name.g64.bak`); a D64 is always saved back. The stepper
+moves a half-track per phase change; a jump of two phases (the opposite coil) carries on the way the head was going, a model of an unstable
+position, not a measured one. A written track keeps its length (bits are overwritten in place, a different density does not change how many fit).
 
 ## Not implemented
 

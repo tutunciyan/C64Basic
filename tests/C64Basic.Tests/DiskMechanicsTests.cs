@@ -19,7 +19,7 @@ public class DiskMechanicsTests
         var drive = new Drive1541(new byte[Drive1541.RomSize]);
         drive.Reset();
         drive.Via2.Write(2, 0x6F);
-        drive.Via2.Write(0, (byte)(motor ? 0x04 : 0x00));
+        drive.Via2.Write(0, (byte)(motor ? 0x64 : 0x60));          // the motor, and the density of the outer zone (PB5-PB6 = 3)
         drive.InsertDisk(disk, swap: false);
         return drive;
     }
@@ -128,7 +128,7 @@ public class DiskMechanicsTests
 
     /// <summary>Firmware: motor on, wait for a sync mark, then store the next eight bytes the head reads at $0300.</summary>
     static readonly string ReadEightBytes =
-        "A9 6F 8D 02 1C A9 04 8D 00 1C A9 0E 8D 0C 1C " +            // DDRB=$6F, motor on, PCR: CA2 high (SO enabled)
+        "A9 6F 8D 02 1C A9 64 8D 00 1C A9 0E 8D 0C 1C " +            // DDRB=$6F, motor on and the density of the outer zone, PCR: CA2 high (SO enabled)
         "2C 00 1C 30 FB " +                                           // BIT $1C00 : BMI back   (until SYNC)
         "B8 A2 00 " +                                                 // CLV : LDX #0
         "50 FE B8 AD 01 1C 9D 00 03 E8 E0 08 D0 F2 " +                // BVC * : CLV : LDA $1C01 : STA $0300,X : INX : CPX #8 : BNE
@@ -160,7 +160,7 @@ public class DiskMechanicsTests
     // ---------- the write head ----------
     /// <summary>Firmware: motor on, switch to write mode (CB2 low) with $A7 in port A, write on every byte-ready, then back to reading.</summary>
     static readonly string WriteSixteenBytes =
-        "A9 6F 8D 02 1C A9 04 8D 00 1C " +                            // DDRB=$6F, motor on
+        "A9 6F 8D 02 1C A9 64 8D 00 1C " +                            // DDRB=$6F, motor on at the density of the outer zone
         "A9 FF 8D 03 1C A9 A7 8D 01 1C " +                            // DDRA = outputs, port A = $A7
         "A9 CE 8D 0C 1C A2 00 " +                                     // PCR: CB2 low (write), CA2 high; LDX #0
         "50 FE B8 E8 E0 10 D0 F8 " +                                  // BVC * : CLV : INX : CPX #16 : BNE

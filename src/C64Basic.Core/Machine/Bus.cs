@@ -42,7 +42,30 @@ public sealed class Bus : ICpuMemory
     public IInputDevice? Input { get; set; }
 
     /// <summary>The CPU's IRQ line: CIA 1 (system timer) or the VIC-II.</summary>
-    public bool IrqLine => Cia1.InterruptPending || Vic.InterruptPending;
+    public bool IrqLine => Cia1.InterruptPending || Vic.InterruptPending || (Expansion?.IrqPending ?? false);
+
+    /// <summary>The RAM expansion unit on the expansion port, if any (ROM mode).</summary>
+    public Reu? Expansion { get; private set; }
+
+    /// <summary>The cartridge on the expansion port, if any (ROM mode).</summary>
+    public Cartridge? Cart { get; private set; }
+
+    /// <summary>Plugs a cartridge in (or pulls it out with null). The machine should be reset after.</summary>
+    public void AttachCartridge(Cartridge? cart)
+    {
+        Cart = cart;
+        for (int a = 0xDE00; a < 0xE000; a++) _chips[a - IoStart] = cart != null ? cart : a >= 0xDF00 ? Expansion : null;
+        cart?.Reset();
+    }
+
+    /// <summary>Plugs a RAM expansion unit in (or pulls it out with null). It shares $DF00 with a cartridge's I/O area: the cartridge wins.</summary>
+    public void AttachReu(Reu? reu)
+    {
+        Expansion = reu;
+        for (int a = 0xDF00; a < 0xE000; a++) if (Cart == null) _chips[a - IoStart] = reu;
+    }
+
+    bool Ultimax => Cart is { Ultimax: true };
 
     /// <summary>The CPU's NMI line: CIA 2, or the RESTORE key. The CPU reacts to the line going active.</summary>
     public bool NmiLine => Cia2.InterruptPending || (Input?.Restore ?? false);
@@ -212,6 +235,8 @@ public sealed class Bus : ICpuMemory
         Array.Fill(Color.Data, (byte)14);
         Cia1.PowerOn();
         Cia2.PowerOn();
+        Cart?.Reset();
+        Expansion?.Reset();
     }
 
     /// <summary>The three banking bits of the processor port as the memory map sees them (LORAM, HIRAM, CHAREN).</summary>
@@ -230,8 +255,8 @@ public sealed class Bus : ICpuMemory
     public bool CassetteWrite => (Ram[0] & 0x08) == 0 || (Ram[1] & 0x08) != 0;
 
     bool Banked => (Port & 3) != 0;
-    bool IoVisible => Banked && (Port & 4) != 0;
-    bool CharRomVisible => Banked && (Port & 4) == 0;
+    bool IoVisible => Ultimax || Banked && (Port & 4) != 0;
+    bool CharRomVisible => !Ultimax && Banked && (Port & 4) == 0;
 
     static bool InIoArea(int address) => address >= IoStart && address < IoStart + IoLength;
 
@@ -244,6 +269,7 @@ public sealed class Bus : ICpuMemory
         }
         if (_kernalRom != null)
         {
+            if (Cart != null && address >= 0x8000 && address < 0xC000 | address >= 0xE000) { int v = CartRead(address); if (v >= 0) return v; }
             if (address >= 0xE000) { if ((Port & 2) != 0) return _kernalRom[address - 0xE000]; }
             else if (address >= 0xA000 && address < 0xC000) { if ((Port & 3) == 3) return _basicRom![address - 0xA000]; }
             else if (address == 1) return (byte)PortRead;
@@ -253,8 +279,30 @@ public sealed class Bus : ICpuMemory
         return Ram[address];
     }
 
+    /// <summary>
+    /// What the cartridge puts on the bus at an address outside the I/O area, or -1 when it does not answer there: ROML at $8000 when its
+    /// EXROM line is low and the processor port has LORAM and HIRAM set, ROMH at $A000 for a 16 KB cartridge (GAME low too) with HIRAM
+    /// set, and in Ultimax mode ROML and ROMH ($E000) whatever the port says, with only $0000-$0FFF of RAM and nothing at $1000-$7FFF and $A000-$CFFF.
+    /// </summary>
+    int CartRead(int address)
+    {
+        var cart = Cart!;
+        if (cart.Ultimax)
+        {
+            if (address >= 0xE000) return cart.ReadRomh(address & 0x1FFF);
+            if (address >= 0x8000 && address < 0xA000) return cart.ReadRoml(address & 0x1FFF);
+            return 0xFF;                                          // $A000-$CFFF: nothing there
+        }
+        if (!cart.ExromLow) return -1;
+        if (address < 0xA000) return (Port & 3) == 3 ? cart.ReadRoml(address & 0x1FFF) : -1;
+        if (address < 0xC000) return cart.GameLow && (Port & 2) != 0 ? cart.ReadRomh(address & 0x1FFF) : -1;
+        return -1;
+    }
+
     public void Write(int address, byte value)
     {
+        if (Cart is { Ultimax: true } && address >= 0x1000 && !(address >= IoStart && address < IoStart + IoLength))
+            return;                                               // no RAM there in Ultimax mode
         bool io = InIoArea(address) && IoVisible;
         if (io)
         {
@@ -263,6 +311,7 @@ public sealed class Bus : ICpuMemory
             else _io[address - IoStart] = value;
         }
         else Ram[address] = value; // writes always reach the RAM under ROM
+        if (address == 0xFF00) Expansion?.WroteFF00();
         Written?.Invoke(address, value, io);
     }
 }

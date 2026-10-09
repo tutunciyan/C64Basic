@@ -7,6 +7,9 @@
   the repository).
 
 **ROM mode**
+- The expansion port: `.crt` cartridges (normal 8K/16K/Ultimax, Ocean, C64 Game System, Magic Desk, EasyFlash read-only) with the GAME/EXROM
+  memory map and bank registers, and a RAM expansion unit (128 KB-16 MB: transfer, swap and verify with DMA timing, autoload, FF00 trigger,
+  interrupts). `--cart`, `--reu`, `RomMachine.InsertCartridge` and `InsertReu`; saved states are version 5.
 - Window: Ctrl+N / Ctrl+B swap the disk for the next / previous image in its folder, Scroll Lock pauses and shows the registers in the title,
   Ctrl+T and Ctrl+R work the tape, dropping a `.tap`, `.t64` or `.prg` mounts it. (`RomMachine.SwapDisk`, `Paused`, `Registers()`.)
 - A datasette on the cassette port: `--tape` / `RomMachine.MountTape(File)` feeds a `.tap` (or a `.t64` converted to KERNAL format) to CIA 1's

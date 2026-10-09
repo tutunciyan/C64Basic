@@ -247,6 +247,16 @@ ROM mode has up to two drives: `--disk 8=a.d64 --disk 9=b.d64` puts a second 154
 serial bus as device 9, so `LOAD"X",8` and `SAVE"X",9` copy between disks; the window title shows which drive is turning. A state file
 keeps the number of drives it was taken with.
 
+**Expansion port (ROM mode):** `--cart <file.crt>` plugs in a cartridge image and `--reu <kb>` a RAM expansion unit; both reset the machine (dropping
+a `.crt` on the window does too). The memory map follows the GAME and EXROM lines: an 8 KB cartridge shows at $8000 while LORAM and HIRAM are set,
+a 16 KB one also at $A000 in place of BASIC (HIRAM), and Ultimax mode (GAME low, EXROM high) gives the cartridge $8000 and $E000 (its own reset
+vector) with RAM only at $0000-$0FFF. The KERNAL starts a cartridge with the `CBM80` signature itself. CRT hardware types supported: 0 (normal),
+5 (Ocean), 15 (C64 Game System), 19 (Magic Desk) and 32 (EasyFlash, read only: the flash cannot be written, so a program that saves to it will
+not keep anything); freezer and other cartridges are refused. The REU (128 KB to 16 MB, registers at $DF00-$DF0A) does C64-to-REU, REU-to-C64,
+swap and verify transfers with the fixed-address and autoload options, the FF00 trigger and the end-of-block and verify-error interrupts;
+a transfer takes a cycle a byte with the processor held. A cartridge and an REU share $DF00, so the cartridge wins. Saved states keep the
+bank registers and the REU's contents but not the cartridge's ROM: start with the same `--cart` and `--reu` to load one.
+
 In the ROM mode window: Ctrl+N and Ctrl+B swap the disk in drive 8 for the next or previous `.d64`/`.g64` in the same folder, in name order (the
 disks of a multi-disk game side by side), Scroll Lock pauses the machine and shows the registers of the processors, the raster line and the drive's
 head in the title, and dropping a `.tap` mounts a tape (a `.t64` or `.prg` goes on a blank disk).
@@ -284,7 +294,8 @@ the right order within a cycle. That is what a fast loader needs: the 1943 loade
 of microseconds, and only works when a released serial line rises about a microsecond late (a line is only pulled up by a resistor through
 the cable's capacitance), which the model has: 1.2 microseconds, and anything from about 0.8 to 1.7 loads the game, none at all does
 not. If a fast loader that works on a real machine fails here, `--iec-rise` is the knob to try. A boot from a game image takes about a
-minute of emulated time, the same as the real machine, and `--fast` skips the speed limit.
+minute of emulated time, the same as the real machine, and `--fast` skips the speed limit. Measured in a Release build (BASIC idle, and a fast
+loader at work), ROM mode runs about 17 to 19 times faster than the real machine, so a boot with `--fast` takes a few seconds.
 
 Games are tested against real images kept in `roms/games` (git-ignored, copyrighted, so the tests skip on a machine without them): `GameCorpusTests`
 loads every `.d64`, `.g64`, `.t64` and `.prg` there and lists its directory, and runs the ones it knows by name to their title screen. Known to work:
@@ -292,7 +303,7 @@ loads every `.d64`, `.g64`, `.t64` and `.prg` there and lists its directory, and
 and Ms. Pac-Man (a T64, put on a blank disk). To add a game, drop the image there and add a row to that file.
 
 Known limits: a gate-for-gate chip simulation this is not. The VIC-II is the same frame renderer as the interpreter's (raster tricks
-and bad lines, but not every cycle-level effect), there is no REU or cartridge, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
+and bad lines, but not every cycle-level effect), freezer cartridges and cartridge flash are not there, and the jams ($02, $12, ...) stop the machine with a message in the title bar.
 The disk head counts its cells at the speed the density bits (PB5-PB6 of VIA 2) select, as the real one does, and the disk turns at 300 rpm
 whatever they say: with the density a track was recorded at every bit is read as recorded, with another one the stream is sampled at the wrong
 rate (a bit is missed or seen twice), so code that sets the density wrong, or a protection that records at an odd speed, sees what it would on

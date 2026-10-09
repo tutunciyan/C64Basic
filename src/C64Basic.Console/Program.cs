@@ -22,6 +22,8 @@ const string Usage = """
       --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
       --tape <f>      mount a .t64 or .tap tape image as device 1 (a missing file is created empty); in ROM mode a datasette with PLAY pressed
       --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2; fast loaders need about 0.8 to 1.7)
+      --cart <f>      ROM mode: plug in a .crt cartridge (normal 8K/16K/Ultimax, Ocean, C64 Game System, Magic Desk, EasyFlash read-only)
+      --reu <kb>      ROM mode: plug in a RAM expansion unit of 128, 256, 512 ... 16384 KB (a cartridge and an REU share $DF00: the cartridge wins)
       --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 instead of the built-in BASIC (needs the ROM
                       dumps in <d>; draws the picture like --pixels, so it needs a terminal; --disk mounts a .d64 or .g64, --fast
@@ -33,7 +35,8 @@ bool strict = false, plain = false, fast = false, pixels = false;
 int? width = null;
 string? file = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
-string? tape = null;
+string? tape = null, cart = null;
+int reuKb = 0;
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -63,6 +66,14 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !double.TryParse(args[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rise) || rise < 0 || rise > 10)
             { System.Console.Error.WriteLine("--iec-rise needs a number of microseconds from 0 to 10"); return 2; }
             RomMachine.IecRiseSeconds = rise * 1e-6;
+            break;
+        case "--cart":
+            if (++i >= args.Length) { System.Console.Error.WriteLine("--cart needs a .crt file"); return 2; }
+            cart = args[i];
+            break;
+        case "--reu":
+            if (++i >= args.Length || !int.TryParse(args[i], out reuKb) || reuKb < 128 || reuKb > 16384 || (reuKb & (reuKb - 1)) != 0)
+            { System.Console.Error.WriteLine("--reu needs a size in KB: 128, 256, 512, 1024 ... 16384"); return 2; }
             break;
         case "--write-g64":
             RomMachine.SaveG64Changes = true;
@@ -108,6 +119,8 @@ if (romDir != null)
         machine = new RomMachine(roms, driveCount: disks.Any(d => d.Device == 9) ? 2 : 1);
         foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
         if (tape != null) machine.MountTapeFile(tape);
+        if (reuKb != 0) machine.InsertReu(reuKb);
+        if (cart != null) machine.InsertCartridge(C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(cart)));
     }
     catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
     {

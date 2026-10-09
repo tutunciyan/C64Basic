@@ -201,7 +201,7 @@ public sealed class RomMachine
 
     // ---------- saved state ----------
     const string StateMagic = "C64ROMSTATE";
-    const int StateVersion = 4;                  // 2: the drive head's position inside a bit and its direction; 3: the number of drives; 4: the datasette
+    const int StateVersion = 5;                  // 2: the drive head's position inside a bit and its direction; 3: the number of drives; 4: the datasette; 5: cartridge and REU
 
     /// <summary>
     /// The whole machine as bytes: the processor, RAM and every chip of the C64, and the drive with its processor, RAM, VIAs, head
@@ -225,6 +225,10 @@ public sealed class RomMachine
                 Iec!.SaveState(w);
             }
             Tape.SaveState(w);
+            w.Write(Bus.Cart != null);
+            Bus.Cart?.SaveState(w);
+            w.Write(Bus.Expansion != null);
+            Bus.Expansion?.SaveState(w);
         }
         return stream.ToArray();
     }
@@ -253,6 +257,15 @@ public sealed class RomMachine
             Iec!.LoadState(r);
         }
         if (version >= 4) Tape.LoadState(r);
+        if (version >= 5)
+        {
+            bool hadCart = r.ReadBoolean();
+            if (hadCart != (Bus.Cart != null)) throw new InvalidDataException(hadCart ? "the state was taken with a cartridge: start with the same one" : "the state was taken without a cartridge");
+            Bus.Cart?.LoadState(r);
+            bool hadReu = r.ReadBoolean();
+            if (hadReu != (Bus.Expansion != null)) throw new InvalidDataException(hadReu ? "the state was taken with an REU: start with the same size" : "the state was taken without an REU");
+            Bus.Expansion?.LoadState(r);
+        }
         lock (_typed) _typed.Clear();
     }
 
@@ -343,6 +356,26 @@ public sealed class RomMachine
         string? next = SiblingImage(current, step);
         if (next != null) MountDiskFile(next, device);
         return next;
+    }
+
+    // ---------- the expansion port ----------
+    /// <summary>Plugs a cartridge in (or out, with null) and powers the machine on again, as turning the machine off to change one does.</summary>
+    public void InsertCartridge(Cartridge? cart)
+    {
+        Bus.AttachCartridge(cart);
+        Reset();
+    }
+
+    /// <summary>Plugs a RAM expansion unit of the given size (128, 256, 512 ... 16384 KB) in, or out with 0, and powers the machine on again.</summary>
+    public void InsertReu(int sizeKilobytes)
+    {
+        if (sizeKilobytes == 0) Bus.AttachReu(null);
+        else
+        {
+            var reu = new Reu(Bus, sizeKilobytes) { Halt = cycles => Cpu.Cycles += cycles };
+            Bus.AttachReu(reu);
+        }
+        Reset();
     }
 
     // ---------- the tape ----------

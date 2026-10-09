@@ -298,6 +298,18 @@ static unsafe partial class SdlHost
                         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
                     });
                     break;
+                case ".crt":
+                    machine.Post(() =>
+                    {
+                        try
+                        {
+                            var cartridge = C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(path));
+                            machine.InsertCartridge(cartridge);
+                            _statusMessage = "cartridge: " + (cartridge.Name.Length > 0 ? cartridge.Name : Path.GetFileName(path)) + " (the machine was reset)";
+                        }
+                        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+                    });
+                    break;
                 case ".tap":
                     machine.Post(() =>
                     {
@@ -310,7 +322,7 @@ static unsafe partial class SdlHost
                     LoadRomState(machine);
                     break;
                 default:
-                    _statusMessage = "ROM mode takes disk images (.d64, .g64, .t64, .prg), tapes (.tap) and saved states (.sav)";
+                    _statusMessage = "ROM mode takes disk images (.d64, .g64, .t64, .prg), tapes (.tap), cartridges (.crt) and saved states (.sav)";
                     break;
             }
         }

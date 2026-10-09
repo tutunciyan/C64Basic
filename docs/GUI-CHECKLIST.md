@@ -78,4 +78,6 @@ and tick them off. Note the OS and the result.
 - [ ] ROM mode, Scroll Lock pauses: the title shows `paused` with PC, A, X, Y, SP, the flags, the raster line and the drive's PC, the picture and sound stand still; Scroll Lock again carries on where it was.
 - [ ] ROM mode, `--tape some.tap` (or drop a `.tap`): `LOAD` finds the program without "PRESS PLAY ON TAPE", the screen goes blank with the loading border stripes while it plays; Ctrl+T lets go of PLAY (the KERNAL then asks for it) and presses it again, Ctrl+R rewinds.
 - [ ] ROM mode, `--disk 8=a.d64 --disk 9=b.d64`: `LOAD"$",9` lists the second disk, and the title names `1541 #9` while it turns.
+- [ ] ROM mode, `--cart game.crt` (any normal, Ocean, Magic Desk or EasyFlash cartridge you own): the cartridge starts instead of the BASIC banner; dropping a `.crt` on the window resets into it.
+- [ ] ROM mode, `--reu 512` and a program that uses the REU (GEOS, a RAM disk driver, a demo): it finds 512 KB and works.
 

@@ -30,6 +30,8 @@ const string Usage = """
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
       --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2). Fast loaders need about 0.8 to 1.7;
                       change it only if one that works on a real machine does not
+      --cart <f>      ROM mode: plug in a .crt cartridge (normal 8K/16K/Ultimax, Ocean, C64 Game System, Magic Desk, EasyFlash read-only)
+      --reu <kb>      ROM mode: plug in a RAM expansion unit of 128, 256, 512 ... 16384 KB (a cartridge and an REU share $DF00: the cartridge wins)
       --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
       --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
                       the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
@@ -48,6 +50,7 @@ int joyPort = 2;
 var sidModel = Sid.SidModel.Mos6581;
 string? stateFile = null;
 bool resume = false;
+string? cart = null; int reuKb = 0;
 string? program = null, tape = null, typeText = null, snapshot = null, chargen = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
 
@@ -104,6 +107,14 @@ for (int i = 0; i < args.Length; i++)
             { Console.Error.WriteLine("--iec-rise needs a number of microseconds from 0 to 10"); return 2; }
             RomMachine.IecRiseSeconds = rise * 1e-6;
             break;
+        case "--cart":
+            if (++i >= args.Length) { Console.Error.WriteLine("--cart needs a .crt file"); return 2; }
+            cart = args[i];
+            break;
+        case "--reu":
+            if (++i >= args.Length || !int.TryParse(args[i], out reuKb) || reuKb < 128 || reuKb > 16384 || (reuKb & (reuKb - 1)) != 0)
+            { Console.Error.WriteLine("--reu needs a size in KB: 128, 256, 512, 1024 ... 16384"); return 2; }
+            break;
         case "--write-g64":
             RomMachine.SaveG64Changes = true;
             break;
@@ -138,6 +149,8 @@ if (romDir != null)
         if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
         foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
         if (tape != null) machine.MountTapeFile(tape);
+        if (reuKb != 0) machine.InsertReu(reuKb);
+        if (cart != null) machine.InsertCartridge(C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(cart)));
         if (typeText != null) machine.Type(typeText);
         return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
     }

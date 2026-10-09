@@ -124,7 +124,7 @@ if (romDir != null)
         var machine = new RomMachine(roms);
         machine.Bus.Sound.Model = sidModel;
         if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
-        if (disks.Count == 1) machine.MountDisk(File.ReadAllBytes(disks[0].Path));
+        if (disks.Count == 1) machine.MountDiskFile(disks[0].Path);
         if (typeText != null) machine.Type(typeText);
         return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast);
     }

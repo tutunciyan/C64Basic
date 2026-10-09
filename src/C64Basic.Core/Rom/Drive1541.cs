@@ -35,6 +35,7 @@ public sealed class Drive1541 : ILockstepMember
         Via2.PinsA = Mechanics.PinsA;
         Via2.PinsB = Mechanics.PinsB;
         Via2.PortBChanged += Mechanics.PortBChanged;
+        Via2.ControlChanged += Mechanics.ControlChanged;
     }
 
     /// <summary>

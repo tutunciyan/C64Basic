@@ -21,6 +21,9 @@ public sealed class Via6522 : ICpuMemory
     /// <summary>Raised when an output register or direction register write may have changed what the port pins are driven to.</summary>
     public event Action? PortAChanged, PortBChanged;
 
+    /// <summary>Raised after a write to the peripheral control register (the CA2 and CB2 output modes live there).</summary>
+    public event Action? ControlChanged;
+
     public byte Ora, Orb, Ddra, Ddrb;
     byte _ifr, _ier, _acr, _pcr, _sr;
     byte _iraLatch, _irbLatch;
@@ -252,7 +255,7 @@ public sealed class Via6522 : ICpuMemory
                 break;
             case 10: _sr = value; break;
             case 11: Sync(); _acr = value; PortBChanged?.Invoke(); break;
-            case 12: _pcr = value; if ((_pcr >> 1 & 7) != 4) _ca2Handshake = true; break;
+            case 12: _pcr = value; if ((_pcr >> 1 & 7) != 4) _ca2Handshake = true; ControlChanged?.Invoke(); break;
             case 13: _ifr &= (byte)~(value & 0x7F); break;
             case 14:
                 Sync();

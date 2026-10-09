@@ -95,7 +95,7 @@ if (romDir != null)
         var roms = RomSet.Find(romDir);
         foreach (string note in roms.Notes) System.Console.Error.WriteLine("ROM mode: " + note);
         machine = new RomMachine(roms);
-        if (disks.Count == 1) machine.MountDisk(File.ReadAllBytes(disks[0].Path));
+        if (disks.Count == 1) machine.MountDiskFile(disks[0].Path);
     }
     catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
     {

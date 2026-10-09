@@ -31,6 +31,9 @@ public sealed class DiskMechanics
     byte _data = 0xFF;
     bool _byteReadyLow;
     long _byteReadyEnds16;
+    bool _writing, _writeActive, _wroteSomething, _writesPending;
+    byte _writeShift;
+    int _writeCount;
 
     public DiskMechanics(Drive1541 drive) => _drive = drive;
 
@@ -59,6 +62,22 @@ public sealed class DiskMechanics
 
     /// <summary>Bytes read so far (for tests and for a drive-activity indicator).</summary>
     public long BytesRead { get; private set; }
+
+    /// <summary>Bytes written to the disk so far.</summary>
+    public long BytesWritten { get; private set; }
+
+    /// <summary>True while the write head is on (VIA 2's CB2 is low).</summary>
+    public bool Writing => _writing;
+
+    /// <summary>
+    /// True once after the drive wrote something and switched back to reading: the disk has changed and can be saved. The call clears it.
+    /// </summary>
+    public bool TakeWrites()
+    {
+        bool pending = _writesPending;
+        _writesPending = false;
+        return pending;
+    }
 
     long _sensorBlockedUntil = long.MinValue;
 
@@ -132,6 +151,21 @@ public sealed class DiskMechanics
         _motor = motor;
     }
 
+    /// <summary>The peripheral control register of VIA 2 changed: CB2 low is the write head (read/write select).</summary>
+    public void ControlChanged()
+    {
+        AdvanceTo(_drive.Cpu.AccessCycle);
+        bool write = !_drive.Via2.Cb2Output;
+        if (write == _writing) return;
+        _writing = write;
+        _writeActive = false;
+        if (write) return;
+        _shift = 0;                                        // back to reading: look for a sync mark again
+        _bitCount = 0;
+        _sync = false;
+        if (_wroteSomething) { _writesPending = true; _wroteSomething = false; }
+    }
+
     // ---------- time ----------
     int CellAt(int bitPos) => CellTicks[_disk == null ? 3 : _disk.SpeedAt(_slot, bitPos >> 3)];
 
@@ -139,10 +173,11 @@ public sealed class DiskMechanics
     public void AdvanceTo(long cycle)
     {
         long target = cycle * 16;
+        if (_track == null && _writing && _motor && _disk is { WriteProtected: false }) _track = _disk.EnsureTrack(_slot);
         if (!_motor || _track == null)
         {
             if (_next16 < target) _next16 = target;
-            if (!_motor || _track == null) _sync = false;
+            _sync = false;
             ReleaseByteReady(target);
             return;
         }
@@ -150,11 +185,33 @@ public sealed class DiskMechanics
         int bits = _track.Length * 8;
         while (_next16 <= target)
         {
-            int bit = _track[_bitPos >> 3] >> (7 - (_bitPos & 7)) & 1;
-            int cell = CellAt(_bitPos);
+            int position = _bitPos;
+            int bit = _track[position >> 3] >> (7 - (position & 7)) & 1;
+            int cell = CellAt(position);
             if (++_bitPos >= bits) { _bitPos = 0; Revolutions++; }
             _next16 += cell;
             ReleaseByteReady(_next16);
+
+            if (_writing && _writeActive)
+            {
+                // the head writes the bit under it: the byte the processor put in port A, most significant bit first
+                if (_disk is { WriteProtected: false })
+                {
+                    int mask = 0x80 >> (position & 7);
+                    if ((_writeShift & 0x80) != 0) _track[position >> 3] |= (byte)mask; else _track[position >> 3] &= (byte)~mask;
+                    _disk.Modified = true;
+                    _wroteSomething = true;
+                }
+                _writeShift <<= 1;
+                if (++_writeCount == 8)
+                {
+                    _writeCount = 0;
+                    _writeShift = _drive.Via2.PortAOutput;
+                    BytesWritten++;
+                    ByteReady(_next16);
+                }
+                continue;
+            }
 
             _shift = (_shift << 1 | bit) & 0x3FF;
             if (_shift == 0x3FF) { _sync = true; _bitCount = 0; }
@@ -164,6 +221,15 @@ public sealed class DiskMechanics
                 if (++_bitCount == 8)
                 {
                     _bitCount = 0;
+                    if (_writing)
+                    {
+                        // the write head switches on at the next byte boundary and loads the byte waiting in port A
+                        _writeActive = true;
+                        _writeCount = 0;
+                        _writeShift = _drive.Via2.PortAOutput;
+                        ByteReady(_next16);
+                        continue;
+                    }
                     _data = (byte)_shift;
                     BytesRead++;
                     ByteReady(_next16);

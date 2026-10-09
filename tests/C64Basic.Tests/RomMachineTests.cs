@@ -267,6 +267,89 @@ public class RomMachineTests
     }
 
     [Fact]
+    public void AProgramIsSavedToTheDiskByTheRealDos()
+    {
+        var m = Boot();
+        if (m == null) return;
+        m.MountDisk(D64Image.Create("WRITE TEST", "WT").ToArray());
+        GcrDisk? written = null;
+        m.DiskWritten += d => written = d;
+        m.Type("10 PRINT\"SAVED\"\rSAVE\"MYPROG\",8\r");
+        Assert.True(m.RunUntil(() => written != null, 30), "the drive wrote and went back to reading:\n" + m.ScreenText());
+        m.RunSeconds(1);
+
+        var (bytes, report) = written!.ToD64();
+        Assert.True(report.Clean, report.ToString());
+        var image = new D64Image(bytes);
+        var file = image.Read("MYPROG");
+        Assert.Equal(new byte[] { 0x01, 0x08 }, file.Data.Take(2).ToArray());
+        Assert.Contains(image.Directory(), e => e.Name == "MYPROG" && e.Type == FileType.Prg);
+
+        // and it loads again, by the same drive, from the sectors it wrote
+        m.Type("NEW\rLOAD\"MYPROG\",8\rLIST\r");
+        Assert.True(m.RunUntil(() => m.ScreenText().Contains("10 PRINT\"SAVED\""), 20), m.ScreenText());
+    }
+
+    [Fact]
+    public void AD64FileIsSavedBackWhenTheDriveWritesToItAndAG64FileIsNot()
+    {
+        var m = Boot();
+        if (m == null) return;
+        string dir = Path.Combine(Path.GetTempPath(), "c64rom-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // a D64 file that does not exist yet is created blank, mounted, and written back after a SAVE
+            string d64Path = Path.Combine(dir, "work.d64");
+            m.MountDiskFile(d64Path);
+            Assert.True(File.Exists(d64Path));
+            Assert.True(m.DiskSavesChanges);
+            int writes = 0;
+            m.DiskWritten += _ => writes++;
+            m.Type("10 PRINT\"FILE\"\rSAVE\"KEEP\",8\r");
+            Assert.True(m.RunUntil(() => writes > 0, 30), m.ScreenText());
+            m.RunSeconds(0.5);
+            Assert.Null(m.SaveError);
+            var saved = new D64Image(File.ReadAllBytes(d64Path));
+            Assert.Contains(saved.Directory(), e => e.Name == "KEEP");
+            Assert.False(File.Exists(d64Path + ".tmp"));
+
+            // a G64 is someone else's raw tracks: the drive may write to its copy in memory, the file stays as it was
+            string g64Path = Path.Combine(dir, "raw.g64");
+            File.WriteAllBytes(g64Path, G64Image.Encode(D64Image.Create("RAW", "RW").ToArray()));
+            var before = File.ReadAllBytes(g64Path);
+            m.MountDiskFile(g64Path);
+            Assert.False(m.DiskSavesChanges);
+            writes = 0;
+            m.Type("SAVE\"LOST\",8\r");
+            Assert.True(m.RunUntil(() => writes > 0, 30), m.ScreenText());
+            m.RunSeconds(0.5);
+            Assert.Equal(before, File.ReadAllBytes(g64Path));
+            Assert.Contains(new D64Image(m.Drive!.Mechanics.Disk!.ToD64().Disk).Directory(), e => e.Name == "LOST");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ADiskIsFormattedByTheRealDos()
+    {
+        var m = Boot();
+        if (m == null) return;
+        m.MountDisk(D64Image.Create("OLD", "00").ToArray());
+        // reading the error channel waits for the drive to finish: the format writes every track
+        m.Type("10 OPEN 15,8,15,\"N0:FRESH DISK,AB\":INPUT#15,A,B$:PRINT \"FMT\";A;B$:CLOSE 15\rRUN\r");
+        Assert.True(m.RunUntil(() => m.ScreenText().Contains("FMT 0 OK"), 120), m.ScreenText());
+        var (bytes, report) = m.Drive!.Mechanics.Disk!.ToD64();
+        Assert.True(report.Clean, report.ToString());
+        var image = new D64Image(bytes);
+        Assert.Equal("FRESH DISK", image.Title);
+        Assert.Equal("AB", image.Id);
+        Assert.Equal(664, image.BlocksFree);
+        m.Type("LOAD\"$\",8\rLIST\r");
+        Assert.True(m.RunUntil(() => m.ScreenText().Contains("664 BLOCKS FREE"), 20), m.ScreenText());
+    }
+
+    [Fact]
     public void ARunIsTheSameEveryTime()
     {
         var roms = TestRoms.Find();

@@ -41,6 +41,8 @@ static unsafe partial class SdlHost
         gamepads.OpenAll();
 
         bool running = true;
+        machine.DiskWritten += _ => _statusMessage = machine.SaveError != null ? "could not save the disk: " + machine.SaveError
+            : machine.DiskSavesChanges ? "disk saved" : "disk written (not saved: a G64 is read only)";
         var worker = new System.Threading.Thread(() => machine.RunPaced(() => !running, () => _romWarp))
         { IsBackground = true, Name = "C64 ROM mode" };
         worker.Start();
@@ -217,9 +219,11 @@ static unsafe partial class SdlHost
                 case ".d64":
                 case ".g64":
                     {
-                        var image = File.ReadAllBytes(path);
-                        machine.Post(() => machine.MountDisk(image));
-                        _statusMessage = "disk mounted: " + Path.GetFileName(path);
+                        machine.Post(() =>
+                        {
+                            try { machine.MountDiskFile(path); _statusMessage = "disk mounted: " + Path.GetFileName(path); }
+                            catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { _statusMessage = e.Message; }
+                        });
                         break;
                     }
                 default:

@@ -14,6 +14,8 @@
   programs over the serial bus, and a game with a drive-code fast loader (a G64 of 1943) loads and runs. Released serial lines rise a
   microsecond late, as on a real cable; fast loaders' timing windows need that. Swapping a disk flickers the write-protect sensor so the
   DOS notices.
+- The 1541 writes: the write head (VIA 2 CB2 low) puts port A on the track at the speed of the zone, so the real DOS can `SAVE`, scratch,
+  validate and format. A mounted D64 file is saved back after a write; a G64 stays as it was (changes live in memory).
 
 # Changes since v0.1.0
 

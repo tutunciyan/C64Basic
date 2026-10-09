@@ -30,6 +30,12 @@ public sealed class RomMachine
     readonly ConcurrentQueue<Action> _posted = new();
     readonly Queue<char> _typed = new();
 
+    /// <summary>
+    /// Raised (on the machine's thread) after the drive has written to the disk and gone back to reading, with the disk as it is now. A
+    /// host saves the image from here.
+    /// </summary>
+    public event Action<GcrDisk>? DiskWritten;
+
     /// <summary>Why the machine stopped by itself (an opcode that is not implemented), or null.</summary>
     public string? HaltReason { get; private set; }
 
@@ -56,6 +62,7 @@ public sealed class RomMachine
             _lockstep = new Lockstep(c64, new DriveMember(this));
         }
         else _lockstep = new Lockstep(c64);
+        DiskWritten += SaveDiskFile;
         Reset();
     }
 
@@ -109,6 +116,7 @@ public sealed class RomMachine
         {
             var drive = _m.Drive!;
             drive.Step();
+            if (drive.Mechanics.TakeWrites() && drive.Mechanics.Disk is { } disk) _m.DiskWritten?.Invoke(disk);
             if (drive.Cpu.StopReason != CpuStop.None)
                 _m.HaltReason = $"1541: {drive.Cpu.StopReason} at ${drive.Cpu.PC:X4} (opcode ${drive.Cpu.PeekOpcode():X2})";
         }
@@ -213,8 +221,65 @@ public sealed class RomMachine
     }
 
     // ---------- the drive ----------
-    /// <summary>Puts a D64 or G64 image in the drive.</summary>
-    public void MountDisk(byte[] image) => Drive?.InsertDisk(GcrDisk.FromImage(image));
+    /// <summary>The file of the mounted disk image, or null for one that is only in memory.</summary>
+    public string? DiskPath { get; private set; }
 
-    public void EjectDisk() => Drive?.InsertDisk(null);
+    /// <summary>True when changes the drive writes are saved back to <see cref="DiskPath"/>: a D64 is, a G64 (raw tracks of someone else's disk) is not.</summary>
+    public bool DiskSavesChanges { get; private set; }
+
+    /// <summary>Puts a D64 or G64 image in the drive. It lives in memory only.</summary>
+    public void MountDisk(byte[] image)
+    {
+        DiskPath = null;
+        DiskSavesChanges = false;
+        Drive?.InsertDisk(GcrDisk.FromImage(image));
+    }
+
+    /// <summary>
+    /// Puts the disk image in a file in the drive. A D64 is saved back whenever the drive has written to it (a missing one is created
+    /// blank); a G64 is read only, changes stay in memory.
+    /// </summary>
+    public void MountDiskFile(string path)
+    {
+        bool g64 = path.EndsWith(".g64", StringComparison.OrdinalIgnoreCase);
+        byte[] image;
+        if (File.Exists(path)) image = File.ReadAllBytes(path);
+        else if (!g64)
+        {
+            image = Disk.D64Image.Create(Path.GetFileNameWithoutExtension(path).ToUpperInvariant(), "00").ToArray();
+            File.WriteAllBytes(path, image);
+        }
+        else throw new FileNotFoundException("disk image not found: " + path, path);
+        MountDisk(image);
+        DiskPath = path;
+        DiskSavesChanges = !g64;
+    }
+
+    public void EjectDisk()
+    {
+        DiskPath = null;
+        DiskSavesChanges = false;
+        Drive?.InsertDisk(null);
+    }
+
+    /// <summary>Writes the disk back to its D64 file once the sectors on it are all readable again (not halfway through a format).</summary>
+    void SaveDiskFile(GcrDisk disk)
+    {
+        if (DiskPath == null || !DiskSavesChanges) return;
+        var (d64, report) = disk.ToD64();
+        if (!report.Clean) return;
+        string temp = DiskPath + ".tmp";
+        try
+        {
+            File.WriteAllBytes(temp, d64);
+            File.Move(temp, DiskPath, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            SaveError = e.Message;
+        }
+    }
+
+    /// <summary>The message of the last failure to save the disk file, or null.</summary>
+    public string? SaveError { get; private set; }
 }

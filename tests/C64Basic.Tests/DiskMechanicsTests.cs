@@ -157,6 +157,88 @@ public class DiskMechanicsTests
         Assert.Equal(0xC025, drive.Cpu.PC);                             // the program ran to its end loop
     }
 
+    // ---------- the write head ----------
+    /// <summary>Firmware: motor on, switch to write mode (CB2 low) with $A7 in port A, write on every byte-ready, then back to reading.</summary>
+    static readonly string WriteSixteenBytes =
+        "A9 6F 8D 02 1C A9 04 8D 00 1C " +                            // DDRB=$6F, motor on
+        "A9 FF 8D 03 1C A9 A7 8D 01 1C " +                            // DDRA = outputs, port A = $A7
+        "A9 CE 8D 0C 1C A2 00 " +                                     // PCR: CB2 low (write), CA2 high; LDX #0
+        "50 FE B8 E8 E0 10 D0 F8 " +                                  // BVC * : CLV : INX : CPX #16 : BNE
+        "A9 EE 8D 0C 1C 4C 28 C0";                                    // PCR: read mode again; JMP *
+
+    static Drive1541 FirmwareDrive(string code, GcrDisk disk)
+    {
+        var rom = new byte[Drive1541.RomSize];
+        Array.Fill(rom, (byte)0xEA);
+        Convert.FromHexString(code.Replace(" ", "")).CopyTo(rom, 0);
+        rom[0x3FFC] = 0x00; rom[0x3FFD] = 0xC0;
+        var drive = new Drive1541(rom);
+        drive.InsertDisk(disk, swap: false);
+        drive.Reset();
+        return drive;
+    }
+
+    [Fact]
+    public void TheWriteHeadPutsTheBytesFromPortAOnTheTrack()
+    {
+        var disk = GcrDisk.FromD64(BlankD64());
+        var drive = FirmwareDrive(WriteSixteenBytes, disk);
+        var before = (byte[])disk.Tracks[0]!.Clone();
+        while (drive.Cycles < 30_000) drive.Step();
+
+        var track = disk.Tracks[0]!;
+        Assert.NotEqual(before, track);
+        Assert.True(disk.Modified);
+        var pattern = new byte[15];
+        Array.Fill(pattern, (byte)0xA7);
+        Assert.True(track.AsSpan().IndexOf(pattern) >= 0, "fifteen $A7 bytes are on the track");
+        Assert.True(drive.Mechanics.BytesWritten is >= 15 and <= 17);
+        Assert.False(drive.Mechanics.Writing);
+        Assert.True(drive.Mechanics.TakeWrites());                      // one change to report...
+        Assert.False(drive.Mechanics.TakeWrites());                     // ...once
+        Assert.Equal(0xC028, drive.Cpu.PC);
+    }
+
+    [Fact]
+    public void AWriteProtectedDiskIsNotChanged()
+    {
+        var disk = GcrDisk.FromD64(BlankD64());
+        disk.WriteProtected = true;
+        var drive = FirmwareDrive(WriteSixteenBytes, disk);
+        var before = (byte[])disk.Tracks[0]!.Clone();
+        while (drive.Cycles < 30_000) drive.Step();
+        Assert.Equal(before, disk.Tracks[0]);
+        Assert.False(disk.Modified);
+        Assert.False(drive.Mechanics.TakeWrites());
+    }
+
+    [Fact]
+    public void WritingToAnEmptyTrackMakesTheTrack()
+    {
+        var g64 = GcrDisk.FromD64(BlankD64());
+        var disk = new GcrDisk();
+        Assert.Null(disk.Tracks[0]);
+        var drive = FirmwareDrive(WriteSixteenBytes, disk);
+        while (drive.Cycles < 30_000) drive.Step();
+        Assert.NotNull(disk.Tracks[0]);
+        Assert.Equal(g64.TrackBytes(0), disk.TrackBytes(0));            // the length of a track in the outer zone
+        Assert.Equal(3, disk.Speeds[0]);
+    }
+
+    [Fact]
+    public void ADiskComesBackAsAD64AndAsAG64WithAnyChangesIncluded()
+    {
+        var d64 = BlankD64("ROUND TRIP", "RT");
+        var disk = GcrDisk.FromD64(d64);
+        var (decoded, report) = disk.ToD64();
+        Assert.True(report.Clean, report.ToString());
+        Assert.Equal(d64, decoded);
+
+        var again = GcrDisk.FromG64(disk.ToG64());
+        for (int slot = 0; slot < GcrDisk.Slots; slot++) Assert.Equal(disk.Tracks[slot], again.Tracks[slot]);
+        Assert.Equal(disk.Speeds, again.Speeds);
+    }
+
     // ---------- the real DOS ----------
     static byte[] SomeBytes(int count)
     {

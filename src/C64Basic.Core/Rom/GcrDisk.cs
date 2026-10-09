@@ -69,6 +69,48 @@ public sealed class GcrDisk
         return disk;
     }
 
+    static readonly int[] ZoneBytes = { 6250, 6666, 7142, 7692 };
+
+    /// <summary>The track under a half-track slot, made (blank, at the speed of its zone) when nothing was recorded there.</summary>
+    public byte[] EnsureTrack(int slot)
+    {
+        if (Tracks[slot] != null) return Tracks[slot]!;
+        int track = slot / 2 + 1;
+        int zone = track <= 17 ? 3 : track <= 24 ? 2 : track <= 30 ? 1 : 0;
+        Speeds[slot] = zone;
+        return Tracks[slot] = new byte[ZoneBytes[zone]];
+    }
+
+    const int MaxTrackBytes = 7928;
+
+    /// <summary>The disk as a G64 image: every track as it is now, written changes included.</summary>
+    public byte[] ToG64()
+    {
+        int blockSize = Math.Max(MaxTrackBytes, Tracks.Max(t => t?.Length ?? 0));
+        var output = new byte[HeaderSize + Slots * 8 + Slots * (2 + blockSize)];
+        System.Text.Encoding.ASCII.GetBytes(Signature).CopyTo(output, 0);
+        output[9] = Slots;
+        BitConverter.GetBytes((ushort)blockSize).CopyTo(output, 10);
+        int at = HeaderSize + Slots * 8, used = at;
+        for (int slot = 0; slot < Slots; slot++)
+        {
+            var track = Tracks[slot];
+            if (track == null) continue;
+            BitConverter.GetBytes(at).CopyTo(output, HeaderSize + slot * 4);
+            int speed = Speeds[slot];
+            if (speed < 0) speed = 0;                          // a per-byte speed table is not written back; the track keeps one zone
+            BitConverter.GetBytes(speed).CopyTo(output, HeaderSize + Slots * 4 + slot * 4);
+            output[at] = (byte)(track.Length & 0xFF); output[at + 1] = (byte)(track.Length >> 8);
+            track.CopyTo(output, at + 2);
+            at += 2 + blockSize;
+            used = at;
+        }
+        return output.AsSpan(0, used).ToArray();
+    }
+
+    /// <summary>The sectors of tracks 1-35 as a D64 image, plus a report of anything that did not read cleanly.</summary>
+    public (byte[] Disk, G64Report Report) ToD64() => G64Image.Decode(ToG64());
+
     /// <summary>A D64 as it would sit on the disk: ordinary GCR sectors on tracks 1-35.</summary>
     public static GcrDisk FromD64(byte[] d64) => FromG64(G64Image.Encode(d64));
 

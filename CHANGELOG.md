@@ -1,6 +1,6 @@
-# Unreleased
+# 0.3.0
 
-**ROM mode (work in progress)**
+**ROM mode: the real C64 ROMs and a real 1541**
 - The 6502 core runs on any memory map (`ICpuMemory`) and has a native mode with real vectors, interrupt lines, the SO pin and the
   cycle of every bus access; `Lockstep` keeps processors with different clocks (C64 985248 Hz, 1541 1 MHz) in step.
 - The 1541's computer: 6502 at 1 MHz, 2 KB RAM, the DOS ROM and two 6522 VIAs (timers, ports, handshake pins, interrupts).

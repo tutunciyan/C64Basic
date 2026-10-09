@@ -1,5 +1,11 @@
 # Unreleased
 
+**Tests**
+- Tests that need the ROM dumps or a local game image (`[RomFact]`, `[GameFact]`) show as skipped, not passed, when those files are missing,
+  so a CI run says how much it did not check.
+- Klaus Dormann's 6502 functional test runs on the native processor (CI fetches the binary into `roms/cputests`; it is GPL, so it is not in
+  the repository).
+
 **ROM mode**
 - The VIC-II stalls the processor cycle by cycle (BA/AEC) instead of adding the stolen cycles after the instruction: a read waits while BA
   is low (bad line: cycles 12-54, sprites: three cycles before to the end of their fetch), writes go through for three cycles, and the wait is

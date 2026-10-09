@@ -6,7 +6,7 @@ namespace C64Basic.Tests;
 /// <summary>The real 1541 DOS ROM running on the drive's processor, talked to over the serial bus. Needs the ROM dumps in <c>roms/</c>.</summary>
 public class DriveRomTests
 {
-    [Fact]
+    [RomFact]
     public void TheDosBootsAndSetsUpItsChips()
     {
         var roms = TestRoms.Find();
@@ -20,7 +20,7 @@ public class DriveRomTests
         Assert.True(host.ClkIsHigh && host.DataIsHigh);    // the drive leaves the bus alone when idle
     }
 
-    [Fact]
+    [RomFact]
     public void ADriveAnswersAttentionAndReportsItsStatusOnTheCommandChannel()
     {
         var roms = TestRoms.Find();
@@ -36,7 +36,7 @@ public class DriveRomTests
         host.Release();
     }
 
-    [Fact]
+    [RomFact]
     public void ADriveSetToDevice9IgnoresDevice8()
     {
         var roms = TestRoms.Find();
@@ -49,7 +49,7 @@ public class DriveRomTests
         host.Release();
     }
 
-    [Fact]
+    [RomFact]
     public void AnUnknownCommandSetsTheErrorChannel()
     {
         var roms = TestRoms.Find();

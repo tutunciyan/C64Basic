@@ -174,7 +174,7 @@ public class DriveAccuracyTests
     }
 
     // ---------- writing a G64 back (needs the ROMs: it is the real DOS that saves) ----------
-    [Fact]
+    [RomFact]
     public void AG64IsWrittenBackOnlyWhenAskedAndTheOriginalIsKept()
     {
         var roms = TestRoms.Find();

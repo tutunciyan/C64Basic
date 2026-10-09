@@ -116,7 +116,7 @@ public class RomMachineTests
         Assert.Equal(0x77, bus.Read(0xA000));                    // no ROM image: the interpreter's memory map
     }
 
-    [Fact]
+    [RomFact]
     public void PowerOnClearsTheChipsAndTheMemory()
     {
         var bus = RomBus();
@@ -130,7 +130,7 @@ public class RomMachineTests
     }
 
     // ---------- the real ROMs ----------
-    [Fact]
+    [RomFact]
     public void TheMachineBootsToTheBasicPrompt()
     {
         var m = Boot();
@@ -142,7 +142,7 @@ public class RomMachineTests
         Assert.Null(m.HaltReason);
     }
 
-    [Fact]
+    [RomFact]
     public void ThereIsNoDriveInTheMachineWhenNoneIsAsked()
     {
         var m = Boot(drive: false);
@@ -152,7 +152,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Contains("DEVICE NOT PRESENT"), 5), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void BasicRunsOnTheRealInterpreter()
     {
         var m = Boot();
@@ -164,7 +164,7 @@ public class RomMachineTests
         Assert.Contains("\n 1\n 4\n 9\n", screen);
     }
 
-    [Fact]
+    [RomFact]
     public void TheRealKernalInterruptKeepsTheJiffyClock()
     {
         var m = Boot();
@@ -176,7 +176,7 @@ public class RomMachineTests
         Assert.InRange(ticks, 118, 122);                         // 60 interrupts a second from CIA 1's timer
     }
 
-    [Fact]
+    [RomFact]
     public void KeysPressedOnTheMatrixAreScannedByTheKernal()
     {
         var m = Boot();
@@ -194,7 +194,7 @@ public class RomMachineTests
         Assert.Equal(2, last.Length);                            // plus the graphics character
     }
 
-    [Fact]
+    [RomFact]
     public void RunStopWithRestoreIsTheWarmStart()
     {
         var m = Boot();
@@ -210,7 +210,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Split('\n').Last() == "READY.", 2), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void LoadAndListTheDirectoryThroughTheRealSerialRoutines()
     {
         var m = Boot();
@@ -226,7 +226,7 @@ public class RomMachineTests
         Assert.Contains("663 BLOCKS FREE.", screen);
     }
 
-    [Fact]
+    [RomFact]
     public void ALoadedProgramRuns()
     {
         var m = Boot();
@@ -239,7 +239,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Split('\n').Last() == "READY.", 2));
     }
 
-    [Fact]
+    [RomFact]
     public void AMissingFileGivesTheDriveErrorAndAnEmptyDriveANotReadyError()
     {
         var m = Boot();
@@ -251,7 +251,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Contains("62 FILE NOT FOUND"), 10), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void ASwappedDiskIsNoticedBecauseTheWriteProtectSensorFlickers()
     {
         var m = Boot();
@@ -266,7 +266,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Contains("DISK TWO"), 15), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void AProgramIsSavedToTheDiskByTheRealDos()
     {
         var m = Boot();
@@ -290,7 +290,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Contains("10 PRINT\"SAVED\""), 20), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void AD64FileIsSavedBackWhenTheDriveWritesToItAndAG64FileIsNot()
     {
         var m = Boot();
@@ -330,7 +330,7 @@ public class RomMachineTests
         finally { Directory.Delete(dir, true); }
     }
 
-    [Fact]
+    [RomFact]
     public void ATapeImageOrAProgramFileIsMountedAsADisk()
     {
         var m = Boot();
@@ -357,7 +357,7 @@ public class RomMachineTests
         finally { Directory.Delete(dir, true); }
     }
 
-    [Fact]
+    [RomFact]
     public void ADiskIsFormattedByTheRealDos()
     {
         var m = Boot();
@@ -376,7 +376,7 @@ public class RomMachineTests
         Assert.True(m.RunUntil(() => m.ScreenText().Contains("664 BLOCKS FREE"), 20), m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void ARunIsTheSameEveryTime()
     {
         var roms = TestRoms.Find();
@@ -397,7 +397,7 @@ public class RomMachineTests
         $"{m.Cpu.PC:X4} {m.Cpu.A:X2} {m.Cpu.X:X2} {m.Cpu.Y:X2} {m.Cpu.SP:X2} {m.Cpu.Cycles} | " +
         $"{m.Drive!.Cpu.PC:X4} {m.Drive.Cpu.A:X2} {m.Drive.Cycles} {m.Drive.Mechanics.Track} {m.Drive.Mechanics.BytesRead}\n{m.ScreenText()}";
 
-    [Fact]
+    [RomFact]
     public void ASavedStateRunsOnExactlyAsTheOriginalDid()
     {
         var m = Boot();
@@ -415,7 +415,7 @@ public class RomMachineTests
         Assert.Equal(original, Signature(m));
     }
 
-    [Fact]
+    [RomFact]
     public void AStateLoadsIntoAFreshMachineWithItsDiskAndProgram()
     {
         var m = Boot();
@@ -438,7 +438,7 @@ public class RomMachineTests
         Assert.Contains("HI FROM DISK", other.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void AStateTakenWhileTheDriveIsLoadingAFileFinishesTheLoad()
     {
         var m = Boot();
@@ -469,7 +469,7 @@ public class RomMachineTests
         Assert.Equal(Signature(m), Signature(other));
     }
 
-    [Fact]
+    [RomFact]
     public void AStateThatIsNotOneOrDoesNotFitIsRefused()
     {
         var m = Boot();
@@ -484,7 +484,7 @@ public class RomMachineTests
         Assert.Contains("READY.", m.ScreenText());
     }
 
-    [Fact]
+    [RomFact]
     public void ResetStartsAgainFromTheKernalWithTheDiskStillInTheDrive()
     {
         var m = Boot();
@@ -501,7 +501,7 @@ public class RomMachineTests
     }
 
     // ---------- a real game with a fast loader (a local, git-ignored image) ----------
-    [Fact]
+    [GameFact("1943*.g64")]
     public void AStateTakenInTheMiddleOfAFastLoadRunsOnLikeTheOriginal()
     {
         var roms = TestRoms.Find();
@@ -524,7 +524,7 @@ public class RomMachineTests
         Assert.Equal(m.Bus.Ram, other.Bus.Ram);
     }
 
-    [Fact]
+    [GameFact("1943*.g64")]
     public void AGameWithAFastLoaderLoadsAndRuns()
     {
         var roms = TestRoms.Find();

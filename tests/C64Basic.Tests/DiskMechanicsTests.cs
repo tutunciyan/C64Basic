@@ -248,7 +248,7 @@ public class DiskMechanicsTests
         return data;
     }
 
-    [Fact]
+    [RomFact]
     public void TheDosReadsTheDirectoryOfADiskThroughTheHead()
     {
         var roms = TestRoms.Find();
@@ -268,7 +268,7 @@ public class DiskMechanicsTests
         Assert.Equal(1, host.Drive.Mechanics.Track > 17 ? 1 : 0);       // the head went to the directory track
     }
 
-    [Fact]
+    [RomFact]
     public void TheDosReadsAFileThatSpansManySectors()
     {
         var roms = TestRoms.Find();
@@ -288,7 +288,7 @@ public class DiskMechanicsTests
         Assert.Equal(program, loaded);
     }
 
-    [Fact]
+    [GameFact("*.g64")]
     public void TheDosReadsTheDirectoryOfALocalG64Image()
     {
         // a game image in roms/games (copyrighted, git-ignored): its raw tracks go through the same head and read channel
@@ -306,7 +306,7 @@ public class DiskMechanicsTests
         Assert.Equal(0x04, listing[1]);
     }
 
-    [Fact]
+    [RomFact]
     public void WithoutADiskTheDriveReportsNotReady()
     {
         var roms = TestRoms.Find();

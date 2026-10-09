@@ -29,7 +29,7 @@ public class GameCorpusTests
         return frame.Distinct().Count();
     }
 
-    [Fact]
+    [RomFact]
     public void EveryImageShowsItsDirectory()
     {
         var roms = TestRoms.Find();
@@ -45,7 +45,7 @@ public class GameCorpusTests
         }
     }
 
-    [Fact]
+    [GameFact("International*.d64")]
     public void InternationalKaratePlusLoadsAndGetsPastItsIntro()
     {
         var roms = TestRoms.Find();
@@ -67,7 +67,7 @@ public class GameCorpusTests
         Assert.True(Colours(m) >= 2);
     }
 
-    [Fact]
+    [GameFact("MSPACMAN.T64")]
     public void MsPacManLoadsFromATapeImageAndShowsItsTitle()
     {
         var roms = TestRoms.Find();

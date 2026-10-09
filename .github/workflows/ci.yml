@@ -21,6 +21,12 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      # GPL, so fetched here instead of kept in the repository; the test skips where the file is missing
+      - name: Fetch the 6502 functional test
+        shell: bash
+        run: |
+          mkdir -p roms/cputests
+          curl -fsSL -o roms/cputests/6502_functional_test.bin https://raw.githubusercontent.com/Klaus2m5/6502_65C02_functional_tests/master/bin_files/6502_functional_test.bin
       - run: dotnet build C64Basic.slnx --configuration Release
       - run: dotnet test tests/C64Basic.Tests --configuration Release --no-build
       - name: GUI smoke test

@@ -31,8 +31,6 @@ public sealed class InputState : IInputDevice, IGameInput
         if (index is >= 0 and < 64) _matrix[index] = down;
     }
 
-    public bool IsDown(int index) => index is >= 0 and < 64 && _matrix[index];
-
     public void ReleaseAllKeys()
     {
         Array.Clear(_matrix);

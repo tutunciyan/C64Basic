@@ -109,7 +109,6 @@ public sealed partial class Interpreter
     public bool Strict => _opts.Strict;
     public int LineCount => _lines.Count;
     public void ResetColumn() => Col = 0;
-    public void CancelAuto() => AutoActive = false;
 
     // ---------- output ----------
     public void Write(string s)

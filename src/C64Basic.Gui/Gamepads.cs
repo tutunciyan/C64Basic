@@ -87,14 +87,14 @@ sealed unsafe class Gamepads
         if (pad == null) return;
         switch (button)
         {
-            case GameControllerButton.ControllerButtonDpadUp: pad.Up = down; break;
-            case GameControllerButton.ControllerButtonDpadDown: pad.Down = down; break;
-            case GameControllerButton.ControllerButtonDpadLeft: pad.Left = down; break;
-            case GameControllerButton.ControllerButtonDpadRight: pad.Right = down; break;
-            case GameControllerButton.ControllerButtonA:
-            case GameControllerButton.ControllerButtonB:
-            case GameControllerButton.ControllerButtonX:
-            case GameControllerButton.ControllerButtonY: pad.Fire = down; break;
+            case GameControllerButton.DpadUp: pad.Up = down; break;
+            case GameControllerButton.DpadDown: pad.Down = down; break;
+            case GameControllerButton.DpadLeft: pad.Left = down; break;
+            case GameControllerButton.DpadRight: pad.Right = down; break;
+            case GameControllerButton.A:
+            case GameControllerButton.B:
+            case GameControllerButton.X:
+            case GameControllerButton.Y: pad.Fire = down; break;
             default: return;
         }
         Publish();
@@ -104,8 +104,8 @@ sealed unsafe class Gamepads
     {
         var pad = _pads.FirstOrDefault(p => p.Instance == instance);
         if (pad == null) return;
-        if (axis == GameControllerAxis.ControllerAxisLeftx) pad.AxisX = value;
-        else if (axis == GameControllerAxis.ControllerAxisLefty) pad.AxisY = value;
+        if (axis == GameControllerAxis.Leftx) pad.AxisX = value;
+        else if (axis == GameControllerAxis.Lefty) pad.AxisY = value;
         else return;
         Publish();
     }

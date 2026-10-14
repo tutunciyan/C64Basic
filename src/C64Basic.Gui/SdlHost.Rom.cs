@@ -100,7 +100,7 @@ static unsafe partial class SdlHost
                         gamepads.Handle(e);
                         break;
                     case EventType.Mousemotion:
-                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(window, e.Motion.X, e.Motion.Y, machine.Input);
+                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(machine.Input);
                         break;
                     case EventType.Mousebuttondown or EventType.Mousebuttonup:
                         if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, machine.Input);
@@ -139,7 +139,7 @@ static unsafe partial class SdlHost
                 shownTitle = "";
             }
 
-            if (LightPen && _mouseButtons != 0) StrikeLightPen(window);
+            if (LightPen && _mouseButtons != 0) StrikeLightPen();
             _bus.Vic.Render(frame);
             if (snapshot != null && Environment.TickCount64 - startedAt >= 2000)
             {

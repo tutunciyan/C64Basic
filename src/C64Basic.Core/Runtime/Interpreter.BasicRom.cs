@@ -100,32 +100,32 @@ public sealed partial class Interpreter
         t[0xBC0C] = c => { WriteFac(Arg, ReadFac(Fac1)); return Done; };                                    // MOVAF: ARG = FAC1
 
         // arithmetic with a number in memory (A/Y points to it)
-        t[0xB867] = c => Fac(c, f => f + ReadPacked(AyPointer(c)));                                         // FADD:  FAC1 + mem
-        t[0xB850] = c => Fac(c, f => ReadPacked(AyPointer(c)) - f);                                         // FSUB:  mem - FAC1
-        t[0xBA28] = c => Fac(c, f => f * ReadPacked(AyPointer(c)));                                         // FMULT: FAC1 * mem
-        t[0xBB0F] = c => Fac(c, f => Divide(ReadPacked(AyPointer(c)), f));                                  // FDIV:  mem / FAC1
-        t[0xBF78] = c => Fac(c, f => Power(ReadPacked(AyPointer(c)), f));                                   // FPWR:  mem ^ FAC1
+        t[0xB867] = c => Fac(f => f + ReadPacked(AyPointer(c)));                                         // FADD:  FAC1 + mem
+        t[0xB850] = c => Fac(f => ReadPacked(AyPointer(c)) - f);                                         // FSUB:  mem - FAC1
+        t[0xBA28] = c => Fac(f => f * ReadPacked(AyPointer(c)));                                         // FMULT: FAC1 * mem
+        t[0xBB0F] = c => Fac(f => Divide(ReadPacked(AyPointer(c)), f));                                  // FDIV:  mem / FAC1
+        t[0xBF78] = c => Fac(f => Power(ReadPacked(AyPointer(c)), f));                                   // FPWR:  mem ^ FAC1
 
         // the same with ARG
-        t[0xB86A] = c => Fac(c, f => f + ReadFac(Arg));                                                     // FADDT: FAC1 + ARG
-        t[0xB853] = c => Fac(c, f => ReadFac(Arg) - f);                                                     // FSUBT: ARG - FAC1
-        t[0xBA2B] = c => Fac(c, f => f * ReadFac(Arg));                                                     // FMULTT: FAC1 * ARG
-        t[0xBB12] = c => Fac(c, f => Divide(ReadFac(Arg), f));                                              // FDIVT: ARG / FAC1
-        t[0xBF7B] = c => Fac(c, f => Power(ReadFac(Arg), f));                                               // FPWRT: ARG ^ FAC1
+        t[0xB86A] = c => Fac(f => f + ReadFac(Arg));                                                     // FADDT: FAC1 + ARG
+        t[0xB853] = c => Fac(f => ReadFac(Arg) - f);                                                     // FSUBT: ARG - FAC1
+        t[0xBA2B] = c => Fac(f => f * ReadFac(Arg));                                                     // FMULTT: FAC1 * ARG
+        t[0xBB12] = c => Fac(f => Divide(ReadFac(Arg), f));                                              // FDIVT: ARG / FAC1
+        t[0xBF7B] = c => Fac(f => Power(ReadFac(Arg), f));                                               // FPWRT: ARG ^ FAC1
 
         // functions of FAC1
-        t[0xBC39] = c => Fac(c, f => Math.Sign(f));                                                         // SGN
-        t[0xBC58] = c => Fac(c, Math.Abs);                                                                  // ABS
-        t[0xBFB4] = c => Fac(c, f => -f);                                                                   // NEGOP
-        t[0xBCCC] = c => Fac(c, Math.Floor);                                                                // INT
-        t[0xBF71] = c => Fac(c, f => f < 0 ? throw new BasicException(ErrorCode.IllegalQuantity) : Math.Sqrt(f)); // SQR
-        t[0xB9EA] = c => Fac(c, f => f <= 0 ? throw new BasicException(ErrorCode.IllegalQuantity) : Math.Log(f));  // LOG
-        t[0xBFED] = c => Fac(c, Math.Exp);                                                                  // EXP
-        t[0xE264] = c => Fac(c, Math.Cos);                                                                  // COS
-        t[0xE26B] = c => Fac(c, Math.Sin);                                                                  // SIN
-        t[0xE2B4] = c => Fac(c, Math.Tan);                                                                  // TAN
-        t[0xE30E] = c => Fac(c, Math.Atan);                                                                 // ATN
-        t[0xE097] = c => Fac(c, f =>                                                                        // RND
+        t[0xBC39] = c => Fac(f => Math.Sign(f));                                                         // SGN
+        t[0xBC58] = c => Fac(Math.Abs);                                                                  // ABS
+        t[0xBFB4] = c => Fac(f => -f);                                                                   // NEGOP
+        t[0xBCCC] = c => Fac(Math.Floor);                                                                // INT
+        t[0xBF71] = c => Fac(f => f < 0 ? throw new BasicException(ErrorCode.IllegalQuantity) : Math.Sqrt(f)); // SQR
+        t[0xB9EA] = c => Fac(f => f <= 0 ? throw new BasicException(ErrorCode.IllegalQuantity) : Math.Log(f));  // LOG
+        t[0xBFED] = c => Fac(Math.Exp);                                                                  // EXP
+        t[0xE264] = c => Fac(Math.Cos);                                                                  // COS
+        t[0xE26B] = c => Fac(Math.Sin);                                                                  // SIN
+        t[0xE2B4] = c => Fac(Math.Tan);                                                                  // TAN
+        t[0xE30E] = c => Fac(Math.Atan);                                                                 // ATN
+        t[0xE097] = c => Fac(f =>                                                                        // RND
         {
             if (f < 0) _rng = new Random(unchecked((int)BitConverter.DoubleToInt64Bits(f)));
             return _rng.NextDouble();
@@ -191,7 +191,7 @@ public sealed partial class Interpreter
         };
     }
 
-    TrapResult Fac(Cpu6502 c, Func<double, double> operation)
+    TrapResult Fac(Func<double, double> operation)
     {
         WriteFac(Fac1, Check(operation(ReadFac(Fac1))));
         return Done;

@@ -37,9 +37,6 @@ public sealed class Lockstep
 
     public IReadOnlyList<ILockstepMember> Members => _members;
 
-    /// <summary>The time, in seconds, that a member has reached.</summary>
-    public static double TimeOf(ILockstepMember m) => m.Cycles / m.Hz;
-
     /// <summary>The member whose next observable access comes first (the first one on a tie, so the order of the members is the tie-break).</summary>
     public ILockstepMember Next()
     {

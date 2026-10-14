@@ -125,7 +125,7 @@ static unsafe partial class SdlHost
                         gamepads.Handle(e);
                         break;
                     case EventType.Mousemotion:
-                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(window, e.Motion.X, e.Motion.Y, console);
+                        if (!UiMouseMoved(window, e.Motion.X, e.Motion.Y)) MouseMoved(console);
                         break;
                     case EventType.Mousebuttondown or EventType.Mousebuttonup:
                         if (!UiMouseButton(window, e.Button)) MouseButton(e.Button, console);
@@ -157,7 +157,7 @@ static unsafe partial class SdlHost
                 Sdl.SetWindowTitle(window, interpreter.Warp ? "C64 BASIC (warp)" : "C64 BASIC");
             }
 
-            if (LightPen && _mouseButtons != 0) StrikeLightPen(window);
+            if (LightPen && _mouseButtons != 0) StrikeLightPen();
             _bus.Vic.Render(frame);
             if (snapshot != null && Environment.TickCount64 - startedAt >= 2000)
             {
@@ -324,7 +324,7 @@ static unsafe partial class SdlHost
     static int _mouseX, _mouseY;
 
     /// <summary>Where the pointer is in the picture, as the beam sees it: sprite X (frame x - 8) and the raster line (frame row + 15).</summary>
-    static bool BeamAt(Window* window, out int x, out int line)
+    static bool BeamAt(out int x, out int line)
     {
         bool inside = FramePoint(_mouseX, _mouseY, out int fx, out int fy);
         x = fx - 8;
@@ -333,12 +333,12 @@ static unsafe partial class SdlHost
     }
 
     /// <summary>A light pen strike for the frame being drawn while the button is down: the first one per frame latches.</summary>
-    static void StrikeLightPen(Window* window)
+    static void StrikeLightPen()
     {
-        if (BeamAt(window, out int x, out int line)) _bus.Vic.LightPen(x, line);
+        if (BeamAt(out int x, out int line)) _bus.Vic.LightPen(x, line);
     }
 
-    static void MouseMoved(Window* window, int x, int y, IGameInput console)
+    static void MouseMoved(IGameInput console)
     {
         if (LightPen) return;
         FramePoint(_mouseX, _mouseY, out int fx, out int fy, clamp: true);

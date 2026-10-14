@@ -286,6 +286,11 @@ public sealed partial class Vic2 : IMemoryMapped
             case RasterLine:
                 _rasterCompare = (_rasterCompare & 0x100) | value;
                 return;
+            case MemoryPointers:
+                _reg[r] = value;
+                LogWrite(r, value);
+                PointerBaseChanged();
+                return;
             case Control1:
                 _rasterCompare = (_rasterCompare & 0xFF) | ((value & 0x80) << 1);
                 _reg[r] = (byte)(value & 0x7F);
@@ -323,6 +328,7 @@ public sealed partial class Vic2 : IMemoryMapped
         _log.Clear();
         _reg.CopyTo(_baseRegs, 0);
         _baseLine = CurrentLine;
+        ResetPointerLog();
     }
 
     /// <summary>

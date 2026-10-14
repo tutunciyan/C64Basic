@@ -238,6 +238,44 @@ public class VicRasterTests
     }
 
     [Fact]
+    public void ASpritePointerChangedDownTheScreenShowsTheOldImageAbove()
+    {
+        var beam = new Beam();
+        SolidSprite(beam.Bus, 13);                          // image 13 is solid, image 14 is empty
+        beam.Write(2040, 13).Write(0xD000, 100).Write(0xD001, 60).Write(0xD015, 1).Write(0xD027, 1);
+        beam.At(100, 1).Write(0xD001, 150).Write(2040, 14); // multiplexing: the next copy uses another image
+        var frame = beam.Frame();
+        Assert.Equal(P(1), Px(frame, 100 + 8 + 5, 70));     // first copy, image 13 (the memory holds 14 by now)
+        Assert.Equal(P(6), Px(frame, 100 + 8 + 5, 160));    // second copy, image 14
+    }
+
+    [Fact]
+    public void ASpritePointerChangedAfterItsLastLineWasFetchedDoesNotAffectIt()
+    {
+        var beam = new Beam();
+        SolidSprite(beam.Bus, 13);
+        beam.Write(2040, 13).Write(0xD000, 100).Write(0xD001, 60).Write(0xD015, 1);
+        beam.At(81, 10).Write(2040, 14);                    // the last line of the sprite is 81; its pointer was fetched in line 80
+        var frame = beam.Frame();
+        Assert.Equal(P(1), Px(frame, 113, 81));
+        Assert.Equal(P(1), Px(frame, 113, 70));
+    }
+
+    [Fact]
+    public void ASpritePointerKeepsFollowingTheScreenWhenItMoves()
+    {
+        var beam = new Beam();
+        SolidSprite(beam.Bus, 13);
+        beam.Bus.Ram[0x0400 + 1016] = 14;                   // screen 1: image 14 (empty)
+        beam.Bus.Ram[0x0800 + 1016] = 13;                   // screen 2: image 13 (solid)
+        beam.Write(2040, 14).Write(0xD000, 100).Write(0xD001, 60).Write(0xD015, 1);
+        beam.At(70, 1).Write(0xD018, 0x25);                 // the screen moves to 0x0800 at line 70
+        var frame = beam.Frame();
+        Assert.Equal(P(6), Px(frame, 113, 65));
+        Assert.Equal(P(1), Px(frame, 113, 75));
+    }
+
+    [Fact]
     public void ASpriteAtYStartsOnTheNextLine()
     {
         var beam = new Beam();

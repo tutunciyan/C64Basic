@@ -190,6 +190,7 @@ public sealed class Bus : ICpuMemory
         Sound.LoadState(r);
         Cia1.LoadState(r, version);
         Cia2.LoadState(r, version);
+        Vic.ResetPointerLog();   // after CIA 2 (the VIC bank): where the sprite pointers are
     }
 
     static void ReadInto(BinaryReader r, byte[] target) => ReadExact(r, target.Length).CopyTo(target, 0);
@@ -309,8 +310,14 @@ public sealed class Bus : ICpuMemory
             var chip = _chips[address - IoStart];
             if (chip != null) chip.Write(address, value);
             else _io[address - IoStart] = value;
+            if (address >= 0xDD00 && address < 0xDE00 && (address & 0xD) == 0) Vic.PointerBaseChanged();   // CIA 2 port A or its direction: the VIC bank
         }
-        else Ram[address] = value; // writes always reach the RAM under ROM
+        else
+        {
+            Ram[address] = value; // writes always reach the RAM under ROM
+            int pointer = address - Vic.PointerBase;
+            if ((uint)pointer < 8) Vic.SpritePointerWritten(pointer, value);
+        }
         if (address == 0xFF00) Expansion?.WroteFF00();
         Written?.Invoke(address, value, io);
     }

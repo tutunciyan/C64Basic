@@ -1,3 +1,11 @@
+# Unreleased
+
+**VIC-II**
+- Sprite pointers (the last 8 bytes of screen memory) are logged with the raster line and cycle they were written at, like the registers, and a
+  sprite takes the pointer the chip fetched in the line before. Games that multiplex sprites by rewriting Y and the pointers down the frame
+  (International Karate Plus) showed every copy with the last image, which garbled the fighters. A move of the screen (`$D018`) or the bank
+  (`$DD00`) re-reads the pointers.
+
 # 0.4.0
 
 **Window**

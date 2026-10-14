@@ -43,6 +43,84 @@ public sealed partial class Vic2
         }
     }
 
+    // ---------- sprite pointers ----------
+    // The eight sprite pointers (the last bytes of screen memory) are memory, not registers, but multiplexing games rewrite them down the
+    // frame to reuse a sprite. Writes to them are logged like register writes, and a sprite's pointer for a line is the one the chip
+    // fetched in the line before (at the sprite's own slot, cycle 58 + 2n). Until the first write is seen the memory is read when drawing.
+    const int SpritePointerFirstFetch = 58;
+    readonly List<Entry>[] _ptrLog = Enumerable.Range(0, 8).Select(_ => new List<Entry>()).ToArray();
+    readonly byte[] _basePtr = new byte[8];
+    bool _ptrKnown;
+    int _pointerBase = 0x7F8;   // where the pointers are in the 64K: the bank, the screen and 1016
+
+    /// <summary>The address of sprite pointer 0 in RAM (so the bus can tell a write to it).</summary>
+    internal int PointerBase => _pointerBase;
+
+    /// <summary>The screen or the bank changed (VIC register 24, CIA 2 port A): the pointers are somewhere else now and count as written.</summary>
+    internal void PointerBaseChanged()
+    {
+        int bank = ~_bus.IoByte(0xDD00) & 3;
+        _pointerBase = bank << 14 | (_reg[MemoryPointers] >> 4 & 15) << 10 | 0x3F8;
+        if (_ptrKnown) for (int n = 0; n < 8; n++) LogPointer(n, VicPointer(n));
+    }
+
+    /// <summary>A byte of RAM was written at a sprite pointer.</summary>
+    internal void SpritePointerWritten(int n, byte value)
+    {
+        if (!_ptrKnown)
+        {
+            lock (_composeGate) { _ptrKnown = true; for (int k = 0; k < 8; k++) _basePtr[k] = VicPointer(k); }
+        }
+        LogPointer(n, value);
+    }
+
+    byte VicPointer(int n) => _bus.Ram[_pointerBase + n];
+
+    void LogPointer(int n, byte value)
+    {
+        long line = CurrentLine;
+        int cycle = CycleInLine;
+        lock (_composeGate)
+        {
+            var list = _ptrLog[n];
+            list.Add(new Entry(line, cycle, (byte)n, value));
+            if (list.Count > 20000) FoldPointers(line - 2L * RasterLines);
+        }
+    }
+
+    /// <summary>Applies every logged pointer write before <paramref name="line"/> to the base pointers and forgets it.</summary>
+    void FoldPointers(long line)
+    {
+        for (int n = 0; n < 8; n++)
+        {
+            var list = _ptrLog[n];
+            int k = 0;
+            while (k < list.Count && list[k].Line < line) _basePtr[n] = list[k++].Value;
+            list.RemoveRange(0, k);
+        }
+    }
+
+    internal void ResetPointerLog()
+    {
+        foreach (var list in _ptrLog) list.Clear();
+        _ptrKnown = false;
+        PointerBaseChanged();
+    }
+
+    /// <summary>Applies the logged pointer writes the chip had seen when it fetched sprite <paramref name="n"/> for <paramref name="line"/>.</summary>
+    void AdvancePointer(byte[] ptr, int[] cursor, int n, long line)
+    {
+        long fetch = (line - 1) * CyclesPerLine + SpritePointerFirstFetch + 2 * n;
+        var list = _ptrLog[n];
+        while (cursor[n] < list.Count)
+        {
+            var e = list[cursor[n]];
+            if (e.Line * CyclesPerLine + e.Cycle >= fetch) break;
+            ptr[n] = e.Value;
+            cursor[n]++;
+        }
+    }
+
     /// <summary>Applies every logged write before <paramref name="line"/> to the base registers and forgets it.</summary>
     void AdvanceBase(long line)
     {
@@ -98,6 +176,17 @@ public sealed partial class Vic2
             _baseRegs.CopyTo(regs, 0);
         }
 
+        // the sprite pointers: from the log of writes if there is one, else from the memory as it is
+        var pointers = new byte[8];
+        var pointerCursor = new int[8];
+        bool logged = !live && _ptrKnown;
+        if (logged)
+        {
+            FoldPointers(start - 1);
+            _basePtr.CopyTo(pointers, 0);
+        }
+        else for (int n = 0; n < 8; n++) pointers[n] = VicRead((_pointerBase & 0x3FFF) + n);
+
         bool verticalBorder = true, mainBorder = true;
         byte spriteSprite = 0, spriteBackground = 0;
         for (int line = 0; line < RasterLines; line++)
@@ -120,7 +209,8 @@ public sealed partial class Vic2
             int dy = line - FirstDisplayLine - ((d11 & 7) - 3);
             bool graphics = (d11 & 0x10) != 0 && dy >= 0 && dy < DisplayHeight;
             if (graphics) DrawGraphicsLine(dy, regs);
-            DrawSpriteLine(line, regs);
+            if (logged) for (int n = 0; n < 8; n++) AdvancePointer(pointers, pointerCursor, n, absolute);
+            DrawSpriteLine(line, regs, pointers);
 
             _borderChanges = 0;
             _borderX[0] = 0; _borderState[0] = mainBorder; _borderChanges = 1;
@@ -246,13 +336,12 @@ public sealed partial class Vic2
     }
 
     // ---------- the sprites of one raster line ----------
-    void DrawSpriteLine(int line, byte[] regs)
+    void DrawSpriteLine(int line, byte[] regs, byte[] pointers)
     {
         Array.Clear(_spriteMask);
         Array.Fill(_winner, (sbyte)-1);
         int enable = regs[SpriteEnable];
         if (enable == 0) return;
-        int screen = (regs[MemoryPointers] >> 4 & 15) * 1024;
 
         for (int n = 0; n < 8; n++)
         {
@@ -264,7 +353,7 @@ public sealed partial class Vic2
 
             int x = regs[n * 2] | (regs[SpriteMsbX] >> n & 1) << 8;
             bool multi = (regs[SpriteMulticolor] >> n & 1) != 0;
-            int data = VicRead(screen + 1016 + n) * 64;
+            int data = pointers[n] * 64;
             int bits = VicRead(data + row * 3) << 16 | VicRead(data + row * 3 + 1) << 8 | VicRead(data + row * 3 + 2);
             int own = regs[SpriteColor0 + n] & 15;
 

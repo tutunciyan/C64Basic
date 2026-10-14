@@ -283,6 +283,7 @@ public class ExpansionTests
         var (bus, reu, _) = WithReu();
         for (int i = 0; i < 10; i++) { bus.Ram[0x4000 + i] = (byte)i; reu.Memory[i] = (byte)i; }
         Setup(bus, 0x4000, 0, 10, 0x93);
+        Assert.Equal(0x40, bus.Peek(0xDF00) & 0x60);           // a scheduler peek does not acknowledge flags
         Assert.Equal(0x40, bus.Read(0xDF00) & 0x60);           // end of block, no error
         reu.Memory[6] = 99;
         Setup(bus, 0x4000, 0, 10, 0x93);
@@ -327,6 +328,37 @@ public class ExpansionTests
         Assert.Equal(0, reu.Memory[0x50]);
         bus.Write(0xFF00, 0);
         Assert.Equal(0x33, reu.Memory[0x50]);
+    }
+
+    [Fact]
+    public void ReuDmaReadsAndWritesThroughTheC64MemoryMap()
+    {
+        var (bus, reu, _) = WithReu();
+        bus.Write(0xD020, 5);
+        Setup(bus, 0xD020, 0, 1, 0x90);
+        Assert.Equal((byte)0xF5, reu.Memory[0]);
+
+        reu.Memory[1] = 7;
+        Setup(bus, 0xD020, 1, 1, 0x91);
+        Assert.Equal(7, bus.Vic.Border);
+    }
+
+    [Fact]
+    public void ReuDmaReadsRomAndWritesToItsUnderlyingRam()
+    {
+        var bus = new Bus();
+        var basic = Filled(8192, 0xA6);
+        bus.EnableRomMode(basic, Filled(8192, 0xB7));
+        var reu = new Reu(bus, 128);
+        bus.AttachReu(reu);
+
+        Setup(bus, 0xA000, 0, 1, 0x90);
+        Assert.Equal((byte)0xA6, reu.Memory[0]);
+
+        reu.Memory[1] = 0x42;
+        Setup(bus, 0xA000, 1, 1, 0x91);
+        Assert.Equal((byte)0x42, bus.Ram[0xA000]);
+        Assert.Equal((byte)0xA6, bus.Read(0xA000));
     }
 
     [Fact]

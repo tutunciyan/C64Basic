@@ -171,22 +171,28 @@ public sealed class Via6522 : ICpuMemory
 
     // ---------- registers ----------
     public int Read(int address)
+        => ReadRegister(address, sideEffects: true);
+
+    public int Peek(int address)
+        => ReadRegister(address, sideEffects: false);
+
+    int ReadRegister(int address, bool sideEffects)
     {
         int reg = address & 15;
         switch (reg)
         {
             case 0:
                 Sync();
-                _ifr &= unchecked((byte)~(IrqCb1 | ((_pcr >> 5 & 7) is 1 or 3 ? 0 : IrqCb2)));
+                if (sideEffects) _ifr &= unchecked((byte)~(IrqCb1 | ((_pcr >> 5 & 7) is 1 or 3 ? 0 : IrqCb2)));
                 return (Orb & Ddrb) | ((PortBInput()) & ~Ddrb) & 0xFF;
-            case 1: return ReadA(handshake: true);
+            case 1: return ReadA(handshake: sideEffects);
             case 2: return Ddrb;
             case 3: return Ddra;
-            case 4: { int v = T1Counter(); _ifr &= unchecked((byte)~IrqT1); return v & 0xFF; }
+            case 4: { int v = T1Counter(); if (sideEffects) _ifr &= unchecked((byte)~IrqT1); return v & 0xFF; }
             case 5: return T1Counter() >> 8;
             case 6: return _t1Latch & 0xFF;
             case 7: return _t1Latch >> 8;
-            case 8: { int v = T2Counter(); _ifr &= unchecked((byte)~IrqT2); return v & 0xFF; }
+            case 8: { int v = T2Counter(); if (sideEffects) _ifr &= unchecked((byte)~IrqT2); return v & 0xFF; }
             case 9: return T2Counter() >> 8;
             case 10: return _sr;
             case 11: return _acr;

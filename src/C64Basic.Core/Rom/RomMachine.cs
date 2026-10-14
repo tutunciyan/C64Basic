@@ -124,7 +124,7 @@ public sealed class RomMachine
             cpu.Step();
             if (cpu.StopReason != CpuStop.None)
             {
-                _m.HaltReason = $"{cpu.StopReason} at ${cpu.PC:X4} (opcode ${_m.Bus.Read(cpu.PC):X2})";
+                _m.HaltReason = $"{cpu.StopReason} at ${cpu.PC:X4} (opcode ${_m.Bus.Peek(cpu.PC):X2})";
                 return;
             }
         }
@@ -250,7 +250,7 @@ public sealed class RomMachine
 
         HaltReason = null;
         Cpu.LoadState(r);          // first: the chips take their time from the processor's clock
-        Bus.LoadState(r);
+        Bus.LoadState(r, version);
         if (Drives.Length > 0)
         {
             foreach (var drive in Drives) drive.LoadState(r, version);

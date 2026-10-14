@@ -8,6 +8,8 @@ public interface IMemoryMapped
 {
     /// <param name="address">Absolute address, 53248-57343.</param>
     byte Read(int address);
+    /// <summary>Reads without acknowledging or otherwise changing device state; override when <see cref="Read"/> has side effects.</summary>
+    byte Peek(int address) => Read(address);
     void Write(int address, byte value);
 }
 
@@ -176,6 +178,8 @@ public sealed class Bus : ICpuMemory
         Array.Fill(Color.Data, (byte)14);
         Cia1.PowerOn();
         Cia2.PowerOn();
+        Vic.Reset();
+        Sound.Reset();
         Cart?.Reset();
         Expansion?.Reset();
     }
@@ -202,11 +206,21 @@ public sealed class Bus : ICpuMemory
     static bool InIoArea(int address) => address >= IoStart && address < IoStart + IoLength;
 
     public int Read(int address)
+        => Read(address, peek: false);
+
+    public int Peek(int address)
+        => Read(address, peek: true);
+
+    int Read(int address, bool peek)
     {
         if (InIoArea(address))
         {
             if (CharRomVisible) return CharacterRom[address - IoStart];
-            if (IoVisible) return _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
+            if (IoVisible)
+            {
+                var chip = _chips[address - IoStart];
+                return chip == null ? _io[address - IoStart] : peek ? chip.Peek(address) : chip.Read(address);
+            }
         }
         if (_kernalRom != null)
         {

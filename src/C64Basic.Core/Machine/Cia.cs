@@ -251,9 +251,9 @@ public class Cia : IMemoryMapped
     static byte Bcd(int v) => (byte)(v / 10 << 4 | v % 10);
     static int FromBcd(int b) => (b >> 4 & 15) * 10 + (b & 15);
 
-    byte ReadTod(int reg)
+    byte ReadTod(int reg, bool sideEffects)
     {
-        if (reg == 3 && !_todLatched) { _todLatch = TodSeconds10(); _todLatched = true; } // reading hours freezes the output
+        if (sideEffects && reg == 3 && !_todLatched) { _todLatch = TodSeconds10(); _todLatched = true; } // reading hours freezes the output
         int t = _todLatched ? _todLatch : TodSeconds10();
         byte value;
         switch (reg)
@@ -269,7 +269,7 @@ public class Cia : IMemoryMapped
                     break;
                 }
         }
-        if (reg == 0) _todLatched = false; // reading tenths releases the latch
+        if (sideEffects && reg == 0) _todLatched = false; // reading tenths releases the latch
         return value;
     }
 
@@ -298,6 +298,12 @@ public class Cia : IMemoryMapped
 
     // ---------- registers ----------
     public byte Read(int address)
+        => ReadRegister(address, sideEffects: true);
+
+    public byte Peek(int address)
+        => ReadRegister(address, sideEffects: false);
+
+    byte ReadRegister(int address, bool sideEffects)
     {
         int reg = (address - _start) & 15;
         switch (reg)
@@ -311,13 +317,13 @@ public class Cia : IMemoryMapped
             case 5: return (byte)(Peek(_a) >> 8);
             case 6: return (byte)Peek(_b);
             case 7: return (byte)(Peek(_b) >> 8);
-            case 8: case 9: case 10: case 11: return ReadTod(reg - 8);
+            case 8: case 9: case 10: case 11: return ReadTod(reg - 8, sideEffects);
             case 12: return _sdr;
             case 13:
                 {
                     Sync();
                     byte value = (byte)(_flags | ((_flags & _mask & 0x1F) != 0 ? 0x80 : 0));
-                    _flags = 0; // reading acknowledges every source
+                    if (sideEffects) _flags = 0; // reading acknowledges every source
                     return value;
                 }
             case 14: Sync(); return (byte)(_a.Control & ~0x10);

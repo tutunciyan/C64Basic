@@ -1,4 +1,4 @@
-# Unreleased
+# 0.5.0
 
 **Removed: the BASIC interpreter mode.** Only the real machine is left: the C64 ROMs on the 6502, the real 1541, the ROM dumps are required
 (`./roms`, `roms` next to the program, or `--rom-dir`; a missing one is reported by name).

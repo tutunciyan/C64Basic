@@ -1,5 +1,13 @@
 # Unreleased
 
+**Sound**
+- ROM mode window: SID register writes are stamped with the machine's own time and replayed in the audio callback 60 ms behind it
+  (`Sid.Clock`), instead of the callback sampling whatever the registers held when a buffer was made. Notes that start and stop within one
+  buffer (gates, fast arpeggios, drums) were being dropped or shifted, which sounded like breaking up.
+
+**Window**
+- `--joy-keys <1|2>` starts with the cursor keys as the joystick (they were only a joystick after Ctrl+J / the JOY button).
+
 **VIC-II**
 - Sprite pointers (the last 8 bytes of screen memory) are logged with the raster line and cycle they were written at, like the registers, and a
   sprite takes the pointer the chip fetched in the line before. Games that multiplex sprites by rewriting Y and the pointers down the frame

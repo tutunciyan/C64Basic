@@ -116,6 +116,8 @@ static unsafe partial class SdlHost
     // A game that wants a joystick can be played from the keyboard: with this on, the cursor keys are the stick and Space (or Right Ctrl)
     // fire, on port 1 or port 2 (games differ: Ms. Pac-Man reads port 1, many read port 2). The numpad follows to the same port.
     static ToolButton? _joyButton;
+    /// <summary>--joy-keys: start with the cursor keys as the joystick on this port (0 = off, the JOY button / Ctrl+J still cycle it).</summary>
+    public static int CursorJoystick { get; set; }
     static int _cursorJoystick;                 // 0 = off (the cursor keys are C64 cursor keys), 1 or 2 = the port
     static volatile bool _joystickReset;
 

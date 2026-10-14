@@ -263,4 +263,27 @@ public class SidAccuracyTests
         double newer = Level(Play(Chip(Sid.SidModel.Mos8580), 0x30));
         Assert.True(newer > old);
     }
+
+    [Fact]
+    public void WritesAreHeardAtTheirOwnTimeWhenTheChipFollowsAClock()
+    {
+        short[] Render(Bus b, int count) { var buffer = new short[count]; b.Sound.Render(buffer, 44100); return buffer; }
+        double Rms(short[] x) => Math.Sqrt(x.Select(v => (double)v * v).Average());
+        double now = 1.0;
+        var bus = new Bus();
+        bus.Sound.Clock = () => now;
+        bus.Write(0xD400, 0x00); bus.Write(0xD401, 0x20);
+        bus.Write(0xD403, 0x08);
+        bus.Write(0xD405, 0x00); bus.Write(0xD406, 0xF0);
+        bus.Write(0xD418, 0x0F);
+        Render(bus, 64);                                     // starts the audio clock
+        now += 0.06;
+        bus.Write(0xD404, 0x41);                             // gate on ...
+        now += 0.005;
+        bus.Write(0xD404, 0x40);                             // ... and off again 5 ms later, well inside one audio buffer
+        now += 0.1;
+        var heard = Render(bus, 20000);                      // the note falls about 5200 samples in (the audio runs 60 ms behind)
+        Assert.True(heard.Skip(4800).Take(2000).Max(x => Math.Abs((int)x)) > 500, "the short note was lost");
+        Assert.True(Rms(heard.Skip(9000).ToArray()) < 5, "it should be silent after the gate closed");
+    }
 }

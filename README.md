@@ -204,7 +204,7 @@ A terminal never reports a key release, so each typed key is held on the key mat
   with Space or Right Ctrl as fire (Space still types a space); the numpad follows to the same port. Games differ in the port they read:
   Ms. Pac-Man reads port 1, many read port 2. Pause moves the numpad joystick between the ports without touching the cursor keys.
 - Volume: the SID at full volume is close to full scale, far louder than other programs, so the window plays it at 40 % to begin with.
-  `--volume <0-100>` sets the start level, Ctrl+Up / Ctrl+Down change it in steps of 10 %, Ctrl+M (or the speaker icon) mutes, and the
+  `--joy-keys <1|2>` starts with the cursor keys as the joystick on that port (Space = fire; Ctrl+J or the JOY button cycle off, 1, 2), `--volume <0-100>` sets the start level, Ctrl+Up / Ctrl+Down change it in steps of 10 %, Ctrl+M (or the speaker icon) mutes, and the
   speaker buttons at the end of the toolbar do the same. The emulated chip's own output is not changed, only what reaches the sound card.
 - Toolbar and mouse: a toolbar of small pixel icons runs along the top of the window (open folder, joystick, reset, fast-forward for warp, save, load, copy, paste,
   camera, full screen; ROM mode adds pause, previous and next disk, cassette and rewind), each with a tooltip (what it does and its key) that

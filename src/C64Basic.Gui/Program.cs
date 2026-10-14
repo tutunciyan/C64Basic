@@ -27,6 +27,7 @@ const string Usage = """
       --no-toolbar    leave out the toolbar above the picture (Ctrl+F12 switches it on and off)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
+      --joy-keys <1|2>  start with the cursor keys as the joystick on that port, Space = fire (Ctrl+J / the JOY button cycle off, 1, 2)
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
@@ -89,6 +90,13 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
+        case "--joy-keys":
+        {
+            if (++i >= args.Length || !int.TryParse(args[i], out int keysPort) || keysPort is < 1 or > 2)
+            { Console.Error.WriteLine("--joy-keys needs 1 or 2"); return 2; }
+            SdlHost.CursorJoystick = keysPort;
+            break;
+        }
         case "--lightpen": SdlHost.LightPen = true; break;
         case "--no-toolbar": SdlHost.ToolbarEnabled = false; break;
         case "--volume":

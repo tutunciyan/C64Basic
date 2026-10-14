@@ -74,11 +74,43 @@ public sealed class Sid : IMemoryMapped
         }
     }
 
+    /// <summary>
+    /// The emulated time in seconds, when the host plays the chip while the machine runs on its own thread (ROM mode). Register writes are
+    /// then stamped with it and reach the chip at that moment of the audio, a little behind the machine, so a gate or a frequency changed
+    /// twice within one audio buffer is heard twice. Without it a write acts at once.
+    /// </summary>
+    public Func<double>? Clock { get; set; }
+
+    /// <summary>How far the audio runs behind the machine, so that writes are known before their sample is made.</summary>
+    const double Latency = 0.06;
+
+    readonly Queue<(double Time, int Register, byte Value)> _pending = new();
+    double _renderTime;
+    bool _renderStarted;
+
     public void Write(int address, byte value)
     {
         int r = (address - Start) & 31;
         if (r >= RegisterCount) return;
         lock (_gate)
+        {
+            if (Clock != null)
+            {
+                _pending.Enqueue((Clock(), r, value));
+                if (_pending.Count > 50000) { var old = _pending.Dequeue(); Apply(old.Register, old.Value); }   // nobody is playing: do not grow
+            }
+            else Apply(r, value);
+        }
+    }
+
+    /// <summary>Applies every write still waiting (the registers as the machine has them now).</summary>
+    void Flush()
+    {
+        while (_pending.Count > 0) { var w = _pending.Dequeue(); Apply(w.Register, w.Value); }
+    }
+
+    void Apply(int r, byte value)
+    {
         {
             if (r < 21)
             {
@@ -115,6 +147,7 @@ public sealed class Sid : IMemoryMapped
     {
         lock (_gate)
         {
+            Flush();
             foreach (var v in _voice)
             {
                 w.Write(v.Frequency); w.Write(v.PulseWidth); w.Write(v.Control); w.Write(v.AttackDecay); w.Write(v.SustainRelease);
@@ -127,6 +160,8 @@ public sealed class Sid : IMemoryMapped
     {
         lock (_gate)
         {
+            _pending.Clear();
+            _renderStarted = false;
             foreach (var v in _voice)
             {
                 v.Frequency = r.ReadInt32(); v.PulseWidth = r.ReadInt32(); v.Control = r.ReadInt32();
@@ -148,7 +183,34 @@ public sealed class Sid : IMemoryMapped
         double cycles = ClockHz / sampleRate;
         lock (_gate)
         {
-            for (int i = 0; i < samples.Length; i++) samples[i] = NextSample(cycles);
+            if (Clock == null)
+            {
+                for (int i = 0; i < samples.Length; i++) samples[i] = NextSample(cycles);
+                return;
+            }
+
+            // play the machine's time, Latency behind it: the pace follows the machine a little (a few percent at most) so the gap stays
+            // near Latency whether it runs slow or fast; if it is far off (warp, a loaded state) jump and apply what was missed
+            double target = Clock() - Latency;
+            if (!_renderStarted) { _renderTime = target; _renderStarted = true; }
+            double lag = target - _renderTime;
+            if (Math.Abs(lag) > 0.3)
+            {
+                Flush();
+                _renderTime = target;
+                lag = 0;
+            }
+            double dt = (1.0 / sampleRate) * (1 + Math.Clamp(lag * 0.5, -0.02, 0.02));
+            for (int i = 0; i < samples.Length; i++)
+            {
+                _renderTime += dt;
+                while (_pending.Count > 0 && _pending.Peek().Time <= _renderTime)
+                {
+                    var w = _pending.Dequeue();
+                    Apply(w.Register, w.Value);
+                }
+                samples[i] = NextSample(cycles);
+            }
         }
     }
 

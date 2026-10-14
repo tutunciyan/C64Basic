@@ -40,6 +40,7 @@ static unsafe partial class SdlHost
             Vic2.FrameWidth, Vic2.FrameHeight);
 
         uint audio = OpenAudio();
+        if (audio != 0) machine.Bus.Sound.Clock = () => machine.Seconds;   // the SID plays the machine's own time, not the moment the buffer is made
         var gamepads = new Gamepads(Sdl, machine.Input);
         gamepads.OpenAll();
 
@@ -55,6 +56,7 @@ static unsafe partial class SdlHost
         ToolButton joyButton = null!;
         joyButton = new ToolButton { Label = "JOY-", Icon = ToolIcons.Joystick, Suffix = () => _cursorJoystick == 0 ? "-" : _cursorJoystick.ToString(), Hint = "cursor keys as a joystick: off / port 1 / port 2 (Ctrl+J)", Click = () => CycleCursorJoystick(machine.Input, joyButton), On = () => _cursorJoystick != 0 };
         _joyButton = joyButton;
+        if (CursorJoystick != 0) { _cursorJoystick = CursorJoystick; _keyboardPort = CursorJoystick; joyButton.Label = "JOY" + CursorJoystick; }
         var buttons = new List<ToolButton>
         {
             new() { Label = "OPEN", Icon = ToolIcons.Open, Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },

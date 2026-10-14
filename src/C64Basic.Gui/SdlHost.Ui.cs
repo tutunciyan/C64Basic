@@ -7,7 +7,7 @@ namespace C64Basic.Gui;
 
 /// <summary>
 /// The window's own interface on top of the C64 picture: a toolbar of buttons along the top, and the mouse for text: Shift + drag picks
-/// text off the screen and copies it, a middle click pastes. Both windows (the interpreter's and ROM mode's) use it.
+/// text off the screen and copies it, a middle click pastes..
 /// </summary>
 static unsafe partial class SdlHost
 {
@@ -195,7 +195,7 @@ static unsafe partial class SdlHost
         string? text = Sdl.GetClipboardTextS();
         if (string.IsNullOrEmpty(text)) { _statusMessage = "the clipboard has no text"; return; }
         _pasteText(text);
-        _statusMessage = $"pasted {Math.Min(text.Length, ScreenConsole.MaxPaste)} characters";
+        _statusMessage = $"pasted {Math.Min(text.Length, MaxPaste)} characters";
     }
 
     /// <summary>Inverts the selected cells of the frame, as the cursor is.</summary>

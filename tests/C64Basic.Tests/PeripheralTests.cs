@@ -23,8 +23,8 @@ public class PeripheralTests
     public void ThePaddleOnTheSelectedPortReachesThePotRegisters()
     {
         var bus = new Bus { Seconds = () => 0 };
-        var console = new ScreenConsole();
-        console.Attach(bus);
+        var console = new InputState();
+        bus.Input = console;
         console.SetPaddle(1, 0, 40); console.SetPaddle(1, 1, 41);
         console.SetPaddle(2, 0, 200); console.SetPaddle(2, 1, 201);
 
@@ -49,40 +49,12 @@ public class PeripheralTests
     [Fact]
     public void PaddleValuesAreClamped()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetPaddle(2, 0, 999);
         console.SetPaddle(2, 1, -5);
         Assert.Equal(255, console.Paddle(2, 0));
         Assert.Equal(0, console.Paddle(2, 1));
         Assert.Equal(0, console.Paddle(3, 0));
-    }
-
-    [Fact]
-    public void BasicCanReadAPaddle()
-    {
-        var console = new ScreenConsole();
-        var interp = new Interpreter(console, new MemoryFileSystem());
-        console.SetPaddle(1, 0, 123);
-        interp.ProcessLine("POKE 56320,64:PRINT PEEK(54297)");
-        Assert.Equal(123, interp.Bus.Read(0xD419));
-    }
-
-    // ---------- the CNT pin ----------
-    [Fact]
-    public void TimerACountsCntPulses()
-    {
-        var m = new Clocked();
-        m.Write(0xDD04, 2); m.Write(0xDD05, 0);           // underflows after 3 pulses
-        m.Write(0xDD0E, 0x21);                             // start, count CNT
-        m.Wait(1000);
-        Assert.Equal(2, m.Bus.Cia2.TimerA);                // the system clock does nothing
-        m.Bus.Cia2.PulseCnt(2);
-        Assert.Equal(0, m.Bus.Cia2.TimerA);
-        Assert.False(m.Bus.Cia2.InterruptPending);
-        m.Bus.Cia2.PulseCnt();
-        Assert.Equal(2, m.Bus.Cia2.TimerA);                // reloaded
-        m.Write(0xDD0D, 0x81);
-        Assert.True(m.Bus.Cia2.InterruptPending);
     }
 
     [Fact]
@@ -152,42 +124,41 @@ public class PeripheralTests
             if (KeyboardLayout.KeysFor((char)c) is { } keys) Assert.All(keys, k => Assert.InRange(k, 0, 63));
     }
 
+
     [Fact]
     public void HeldMatrixKeysShowInTheKeyboardRegisters()
     {
         var bus = new Bus { Seconds = () => 0 };
-        var console = new ScreenConsole();
-        console.Attach(bus);
-        foreach (int k in KeyboardLayout.KeysFor('A')!) console.SetKey(k, true);     // shift + A
+        var input = new InputState();
+        bus.Input = input;
+        foreach (int k in KeyboardLayout.KeysFor('A')!) input.SetKey(k, true);       // shift + A
         bus.Write(0xDC02, 0xFF); bus.Write(0xDC03, 0x00);
         bus.Write(0xDC00, 0xFF & ~(1 << 1));                                         // select column 1 (A is key 10 = column 1, row 2)
         Assert.Equal(0, bus.Read(0xDC01) & (1 << 2));
     }
 
-    // ---------- machine state ----------
     [Fact]
     public void TheCiaExtrasSurviveASavedState()
     {
-        var console = new TestConsole();
-        var a = new Interpreter(console, new MemoryFileSystem());
-        a.Bus.Seconds = () => 0;
-        a.Bus.Write(0xDD04, 9); a.Bus.Write(0xDD05, 0);
-        a.Bus.Write(0xDD0E, 0x47);                         // started, PB6 toggle output, serial output
-        a.Bus.Write(0xDD0C, 0x55);                         // a byte is on its way out
-        a.Bus.Cia2.CntHigh = false;
-        var bytes = a.SaveState();
+        var a = new Bus { Seconds = () => 0 };
+        a.Write(0xDD04, 9); a.Write(0xDD05, 0);
+        a.Write(0xDD0E, 0x47);                             // started, PB6 toggle output, serial output
+        a.Write(0xDD0C, 0x55);                             // a byte is on its way out
+        a.Cia2.CntHigh = false;
+        var stream = new MemoryStream();
+        a.SaveState(new BinaryWriter(stream));
 
-        var b = new Interpreter(new TestConsole(), new MemoryFileSystem());
-        b.Bus.Seconds = () => 0;
-        b.LoadState(bytes);
-        Assert.False(b.Bus.Cia2.CntHigh);
-        Assert.Equal(0x40, b.Bus.Read(0xDD01) & 0x40);    // the toggle output is high, as saved
+        var b = new Bus { Seconds = () => 0 };
+        stream.Position = 0;
+        b.LoadState(new BinaryReader(stream));
+        Assert.False(b.Cia2.CntHigh);
+        Assert.Equal(0x40, b.Read(0xDD01) & 0x40);        // the toggle output is high, as saved
         byte? sent = null;
-        b.Bus.Cia2.SerialOut += v => sent = v;
+        b.Cia2.SerialOut += v => sent = v;
         var t = 0.0;
-        b.Bus.Seconds = () => t;
+        b.Seconds = () => t;
         t += 200 * Cycle;
-        _ = b.Bus.Cia2.InterruptPending;
+        _ = b.Cia2.InterruptPending;
         Assert.Equal((byte)0x55, sent);                    // the shift in progress carried on
     }
 }

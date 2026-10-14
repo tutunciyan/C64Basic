@@ -35,7 +35,7 @@ public class JoystickTests
     [Fact]
     public void SourcesOnTheSamePortAreCombined()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(2, JoystickMapping.Left, source: 0);               // keyboard
         console.SetJoystick(2, JoystickMapping.Fire, source: 1);               // a pad
         Assert.Equal(JoystickMapping.Left | JoystickMapping.Fire, console.Joystick(2));
@@ -45,7 +45,7 @@ public class JoystickTests
     [Fact]
     public void ReleasingOneSourceLeavesTheOther()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(2, JoystickMapping.Up, 0);
         console.SetJoystick(2, JoystickMapping.Up | JoystickMapping.Fire, 1);
         console.SetJoystick(2, 0, 1);
@@ -55,7 +55,7 @@ public class JoystickTests
     [Fact]
     public void OpposingSourcesCancelEachOther()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(2, JoystickMapping.Left, 0);
         console.SetJoystick(2, JoystickMapping.Right, 1);
         Assert.Equal(0, console.Joystick(2));
@@ -64,7 +64,7 @@ public class JoystickTests
     [Fact]
     public void BothPortsAreIndependent()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(1, JoystickMapping.Fire, 1);
         console.SetJoystick(2, JoystickMapping.Up, 2);
         Assert.Equal(JoystickMapping.Fire, console.Joystick(1));
@@ -74,7 +74,7 @@ public class JoystickTests
     [Fact]
     public void InvalidPortsAndSourcesAreIgnored()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(0, 1);
         console.SetJoystick(3, 1);
         console.SetJoystick(2, 1, source: 99);
@@ -86,7 +86,7 @@ public class JoystickTests
     [Fact]
     public void ReleaseAllClearsEverySource()
     {
-        var console = new ScreenConsole();
+        var console = new InputState();
         console.SetJoystick(1, 1, 3);
         console.SetJoystick(2, 2, 0);
         console.ReleaseAllKeys();
@@ -97,9 +97,8 @@ public class JoystickTests
     [Fact]
     public void Port1ReadsThroughTheCiaOnPortB()
     {
-        var console = new ScreenConsole();
-        var bus = new Bus();
-        console.Attach(bus);
+        var console = new InputState();
+        var bus = new Bus { Input = console };
         console.SetJoystick(1, JoystickMapping.Fire | JoystickMapping.Right, 1);
         bus.Write(0xDC03, 0);                                          // port B as input
         Assert.Equal(0b1110_0111, bus.Read(0xDC01));                   // right (bit 3) and fire (bit 4) pulled low

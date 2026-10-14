@@ -1,54 +1,47 @@
 using System.Runtime.InteropServices;
-using C64Basic.Core;
-using C64Basic.Core.Disk;
-using C64Basic.Core.IO;
 using C64Basic.Core.Machine;
 using C64Basic.Core.Rom;
-using C64Basic.Core.Runtime;
 using C64Basic.Gui;
 using Silk.NET.SDL;
 
 const string Usage = """
-    C64Basic GUI - a Commodore 64 BASIC V2 computer in a window
+    C64Basic - a Commodore 64 with a real 1541 drive, in a window. Needs the C64 ROM dumps (see --rom-dir).
 
-    Usage: C64Basic.Gui [options] [program.bas|program.prg]
+    Usage: C64Basic.Gui [options]
 
-      program         load and run it, then stay at the READY. prompt
-      --strict        stock BASIC V2 only: no extensions
+      --rom-dir <d>   folder with the ROM dumps: basic-901226-01.bin, kernal-901227-03.bin and dos1541ii-251968-03.bin
+                      (default: ./roms, then roms next to the program)
+      --disk [n=]<f>  mount a .d64 or .g64 disk image (or a .t64 / .prg, put on a blank disk in memory) as device 8 or 9; a missing .d64 is created blank
+      --start         load and run the first program of the disk in drive 8 at startup, like the START button (Ctrl+Enter)
+      --tape <f>      mount a .t64 or .tap tape image: a datasette with PLAY pressed, the real KERNAL reads the pulses
+      --cart <f>      plug in a .crt cartridge (normal 8K/16K/Ultimax, Ocean, C64 Game System, Magic Desk, EasyFlash read-only)
+      --reu <kb>      plug in a RAM expansion unit of 128, 256, 512 ... 16384 KB (a cartridge and an REU share $DF00: the cartridge wins)
+      --write-g64     save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
+      --iec-rise <us> microseconds a released serial line takes to go high (default 1.2). Fast loaders need about 0.8 to 1.7;
+                      change it only if one that works on a real machine does not
       --scale <n>     window size as a multiple of 384x272 (default 3)
       --fast          start in warp mode (no C64 speed limit)
       --fullscreen    start full screen
       --type <text>   type this text at startup (\n = RETURN)
       --snapshot <f>  save a screenshot (.bmp) after two seconds and exit
-      --disk [n=]<f>  mount a .d64 (or read-only .g64) disk image as device n (default 8; 8-11; ROM mode has drives 8 and 9); a missing file is created blank
-      --tape <f>      mount a .t64 or .tap tape image as device 1 (in ROM mode: a datasette with PLAY pressed, the real KERNAL reads the pulses)
       --sid <6581|8580>  sound chip model (default 6581: darker filter, 8580: cleaner and linear)
       --volume <n>    sound level in percent (default 40: the SID at full volume is much louder than other programs); Ctrl+Up / Ctrl+Down change it, Ctrl+M mutes
       --no-toolbar    leave out the toolbar above the picture (Ctrl+F12 switches it on and off)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
-      --start         (ROM mode) load and run the first program of the disk in drive 8 at startup, like the START button (Ctrl+Enter)
       --joy-keys <1|2>  start with the cursor keys as the joystick on that port, Space = fire (Ctrl+J / the JOY button cycle off, 1, 2)
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
       --chargen <f>   use a 4096-byte character ROM dump instead of the built-in character set
-      --iec-rise <us> ROM mode: microseconds a released serial line takes to go high (default 1.2). Fast loaders need about 0.8 to 1.7;
-                      change it only if one that works on a real machine does not
-      --cart <f>      ROM mode: plug in a .crt cartridge (normal 8K/16K/Ultimax, Ocean, C64 Game System, Magic Desk, EasyFlash read-only)
-      --reu <kb>      ROM mode: plug in a RAM expansion unit of 128, 256, 512 ... 16384 KB (a cartridge and an REU share $DF00: the cartridge wins)
-      --write-g64     ROM mode: save what the drive writes to a mounted .g64 back into the file (the first time the original is copied to .g64.bak)
-      --rom-dir <d>   ROM mode: run the real C64 BASIC and KERNAL ROMs and a real 1541 (its own 6502 running the DOS ROM) instead of
-                      the built-in BASIC. Needs the ROM dumps in <d>. --disk mounts a .d64 or .g64 in the drive; fast loaders and
-                      copy protection work. Typing, the joystick, the mouse and Ctrl+S / Ctrl+L (--state, --resume) work as usual; no program file argument or --strict
       -h, --help      show this help
 
     Keys: Esc = RUN/STOP, Shift+Alt = switch character set (Alt is the Commodore key), Shift+letter = graphics like a real C64, F1-F8 = function keys, Ctrl/Alt + 1-8 = colours, numpad = joystick port 2,
-          F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp).
-          ROM mode: Ctrl+N / Ctrl+B = next / previous disk image in the folder, Scroll Lock = pause (registers in the title), Ctrl+T = tape PLAY/STOP, Ctrl+R = rewind.
-          Drop a .d64, .g64, .t64, .tap, .prg, .bas or .sav file on the window to mount or load it.
+          F9 = warp speed, F10 = reset, F11 or Alt+Enter = full screen, F12 = screenshot (.bmp), Ctrl+Enter = load and run the disk,
+          Ctrl+N / Ctrl+B = next / previous disk image in the folder, Scroll Lock = pause (registers in the title), Ctrl+T = tape PLAY/STOP, Ctrl+R = rewind.
+          Drop a .d64, .g64, .t64, .tap, .prg, .crt or .sav file on the window to mount or load it.
     """;
 
-bool strict = false, fast = false, fullscreen = false;
+bool fast = false, fullscreen = false;
 int scale = 3;
 int joyPort = 2;
 var sidModel = Sid.SidModel.Mos6581;
@@ -56,14 +49,13 @@ string? stateFile = null;
 bool resume = false;
 string? cart = null; int reuKb = 0;
 bool startDisk = false;
-string? program = null, tape = null, typeText = null, snapshot = null, chargen = null, romDir = null;
+string? tape = null, typeText = null, snapshot = null, chargen = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
 
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
     {
-        case "--strict": strict = true; break;
         case "--fast": fast = true; break;
         case "--fullscreen": fullscreen = true; break;
         case "--scale":
@@ -147,78 +139,30 @@ for (int i = 0; i < args.Length; i++)
             break;
         case "-h" or "--help": Console.WriteLine(Usage); return 0;
         default:
-            if (args[i].StartsWith('-')) { Console.Error.WriteLine($"Unknown option {args[i]}\n\n{Usage}"); return 2; }
-            program = args[i];
-            break;
+            Console.Error.WriteLine($"Unknown option {args[i]}\n\n{Usage}");
+            return 2;
     }
 }
 
-if (romDir != null)
-{
-    if (program != null || strict)
-    { Console.Error.WriteLine("--rom-dir runs the real ROMs: it takes no program file or --strict (use --disk with a disk image)"); return 2; }
-    if (disks.Any(d => d.Device is not (8 or 9)) || disks.Select(d => d.Device).Distinct().Count() != disks.Count)
-    { Console.Error.WriteLine("ROM mode has up to two drives, devices 8 and 9: one --disk for each"); return 2; }
-    try
-    {
-        var roms = RomSet.Find(romDir);
-        foreach (string note in roms.Notes) Console.Error.WriteLine("ROM mode: " + note);
-        var machine = new RomMachine(roms, driveCount: disks.Any(d => d.Device == 9) ? 2 : 1);
-        machine.Bus.Sound.Model = sidModel;
-        if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
-        foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
-        if (tape != null) machine.MountTapeFile(tape);
-        if (reuKb != 0) machine.InsertReu(reuKb);
-        if (cart != null) machine.InsertCartridge(C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(cart)));
-        if (startDisk && typeText == null) typeText = "LOAD\"*\",8,1\rRUN\r";
-        if (typeText != null) machine.Type(typeText);
-        return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
-    }
-    catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
-    {
-        Console.Error.WriteLine(e.Message);
-        return 1;
-    }
-}
-
-var screen = new ScreenConsole();
-var interpreter = new Interpreter(screen, new HostFileSystem(),
-    new InterpreterOptions { Strict = strict, StatementsPerSecond = 1500 }) { Warp = fast };
+if (disks.Any(d => d.Device is not (8 or 9)) || disks.Select(d => d.Device).Distinct().Count() != disks.Count)
+{ Console.Error.WriteLine("There are two drives, devices 8 and 9: one --disk for each"); return 2; }
 try
 {
-    foreach (var (device, path) in disks) interpreter.MountDrive(device, ImageFiles.OpenDisk(path));
-    if (tape != null) interpreter.MountDrive(1, ImageFiles.OpenTape(tape));
+    var roms = RomSet.Locate(romDir);
+    foreach (string note in roms.Notes) Console.Error.WriteLine("ROM: " + note);
+    var machine = new RomMachine(roms, driveCount: disks.Any(d => d.Device == 9) ? 2 : 1);
+    machine.Bus.Sound.Model = sidModel;
+    if (chargen != null) machine.Bus.LoadCharacterRom(File.ReadAllBytes(chargen));
+    foreach (var disk in disks) machine.MountDiskFile(disk.Path, disk.Device);
+    if (tape != null) machine.MountTapeFile(tape);
+    if (reuKb != 0) machine.InsertReu(reuKb);
+    if (cart != null) machine.InsertCartridge(C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(cart)));
+    if (startDisk && typeText == null) typeText = "LOAD\"*\",8,1\rRUN\r";
+    if (typeText != null) machine.Type(typeText);
+    return SdlHost.Run(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
 }
-catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+catch (Exception e) when (e is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine(e.Message);
     return 1;
 }
-
-if (chargen != null)
-{
-    try { interpreter.Bus.LoadCharacterRom(File.ReadAllBytes(chargen)); }
-    catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
-    {
-        Console.Error.WriteLine($"--chargen: {e.Message}");
-        return 1;
-    }
-}
-
-var repl = new Repl(interpreter, screen);
-var worker = new System.Threading.Thread(() =>
-{
-    try
-    {
-        if (program != null && repl.RunFile(program)) repl.Resume();
-        else if (program != null) repl.Resume();
-        else repl.Run();
-    }
-    catch (InputEndedException) { }
-    finally { screen.Close(); }
-})
-{ IsBackground = true, Name = "C64" };
-
-if (typeText != null) screen.Inject(typeText);
-interpreter.Bus.Sound.Model = sidModel;
-return SdlHost.Run(interpreter, screen, worker, scale, fullscreen, snapshot, joyPort, stateFile, resume);

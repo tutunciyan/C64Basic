@@ -293,12 +293,6 @@ public sealed class RomMachine
         }
     }
 
-    /// <summary>True while typed text is still waiting for room in the keyboard buffer.</summary>
-    public bool Typing
-    {
-        get { lock (_typed) return _typed.Count > 0; }
-    }
-
     // ---------- the screen ----------
     public const int Columns = 40, Rows = 25;
 

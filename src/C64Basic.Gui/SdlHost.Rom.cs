@@ -6,21 +6,18 @@ using Silk.NET.SDL;
 
 namespace C64Basic.Gui;
 
-/// <summary>The window for ROM mode: the machine runs the real ROMs on its own thread and every key goes through the keyboard matrix.</summary>
+/// <summary>The window: the machine runs the real ROMs on its own thread and every key goes through the keyboard matrix.</summary>
 static unsafe partial class SdlHost
 {
     static volatile bool _romWarp;
 
-    /// <summary>The file Ctrl+S and Ctrl+L use for the state of ROM mode.</summary>
-    static string _romStateFile = "c64rom-state.sav";
-
-    public static int RunRom(RomMachine machine, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2,
+    public static int Run(RomMachine machine, int scale, bool fullscreen, string? snapshot, int keyboardPort = 2,
         bool warp = false, string? stateFile = null, bool resume = false)
     {
         _bus = machine.Bus;
         _keyboardPort = keyboardPort;
         _romWarp = warp;
-        if (stateFile != null) _romStateFile = stateFile;
+        if (stateFile != null) _stateFile = stateFile;
 
         if (Sdl.Init(Sdl.InitVideo | Sdl.InitAudio | Sdl.InitEvents | Sdl.InitGamecontroller) != 0)
         {
@@ -29,7 +26,7 @@ static unsafe partial class SdlHost
         }
 
         uint flags = (uint)WindowFlags.Resizable | (fullscreen ? (uint)WindowFlags.FullscreenDesktop : 0);
-        var window = Sdl.CreateWindow("C64 (ROM mode)", Sdl.WindowposCentered, Sdl.WindowposCentered,
+        var window = Sdl.CreateWindow("C64", Sdl.WindowposCentered, Sdl.WindowposCentered,
             Vic2.FrameWidth * scale, Vic2.FrameHeight * scale + (ToolbarEnabled && !fullscreen ? BarUnits : 0), flags);
         if (window == null) { Console.Error.WriteLine("No window: " + Sdl.GetErrorS()); return 1; }
 
@@ -48,7 +45,7 @@ static unsafe partial class SdlHost
         machine.DiskWritten += _ => _statusMessage = machine.SaveError != null ? "could not save the disk: " + machine.SaveError
             : machine.DiskSavesChanges ? "disk saved" : "disk written (not saved: a G64 is read only, see --write-g64)";
         var worker = new System.Threading.Thread(() => machine.RunPaced(() => !running, () => _romWarp))
-        { IsBackground = true, Name = "C64 ROM mode" };
+        { IsBackground = true, Name = "C64" };
         worker.Start();
         if (resume) LoadRomState(machine);
 
@@ -124,7 +121,7 @@ static unsafe partial class SdlHost
             {
                 _statusMessage = null;
                 _statusUntil = Environment.TickCount64 + 3000;
-                Sdl.SetWindowTitle(window, "C64 (ROM mode) - " + message);
+                Sdl.SetWindowTitle(window, "C64 - " + message);
             }
             else if (_statusUntil == 0 && Environment.TickCount64 - titleAt >= 250)
             {
@@ -164,7 +161,7 @@ static unsafe partial class SdlHost
 
     static string RomTitle(RomMachine machine)
     {
-        string title = machine.Paused ? "C64 (ROM mode, paused) - " + machine.Registers() : _romWarp ? "C64 (ROM mode, warp)" : "C64 (ROM mode)";
+        string title = machine.Paused ? "C64 (paused) - " + machine.Registers() : _romWarp ? "C64 (warp)" : "C64";
         if (machine.Halted) return title + " - stopped: " + machine.HaltReason;
         for (int i = 0; i < machine.Drives.Length; i++)
         {
@@ -312,10 +309,12 @@ static unsafe partial class SdlHost
     }
 
     /// <summary>Clipboard text as the keyboard buffer takes it: line breaks become RETURN, what a C64 cannot type is dropped.</summary>
+    const int MaxPaste = 65536;
+
     static string PasteText(string text)
     {
-        var sb = new System.Text.StringBuilder(Math.Min(text.Length, ScreenConsole.MaxPaste));
-        for (int i = 0; i < text.Length && sb.Length < ScreenConsole.MaxPaste; i++)
+        var sb = new System.Text.StringBuilder(Math.Min(text.Length, MaxPaste));
+        for (int i = 0; i < text.Length && sb.Length < MaxPaste; i++)
         {
             char c = text[i];
             if (c == '\r') { sb.Append('\r'); if (i + 1 < text.Length && text[i + 1] == '\n') i++; }
@@ -384,11 +383,11 @@ static unsafe partial class SdlHost
                     });
                     break;
                 case ".sav":
-                    File.Copy(path, _romStateFile, overwrite: true);
+                    File.Copy(path, _stateFile, overwrite: true);
                     LoadRomState(machine);
                     break;
                 default:
-                    _statusMessage = "ROM mode takes disk images (.d64, .g64, .t64, .prg), tapes (.tap), cartridges (.crt) and saved states (.sav)";
+                    _statusMessage = "Takes disk images (.d64, .g64, .t64, .prg), tapes (.tap), cartridges (.crt) and saved states (.sav)";
                     break;
             }
         }
@@ -401,7 +400,7 @@ static unsafe partial class SdlHost
     // ---------- machine state ----------
     static void SaveRomState(RomMachine machine)
     {
-        string file = _romStateFile;
+        string file = _stateFile;
         machine.Post(() =>
         {
             try { File.WriteAllBytes(file, machine.SaveState()); _statusMessage = $"state saved ({Path.GetFileName(file)})"; }
@@ -412,10 +411,10 @@ static unsafe partial class SdlHost
     static void LoadRomState(RomMachine machine)
     {
         byte[] data;
-        try { data = File.ReadAllBytes(_romStateFile); }
+        try { data = File.ReadAllBytes(_stateFile); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _statusMessage = "no saved state (" + Path.GetFileName(_romStateFile) + ")";
+            _statusMessage = "no saved state (" + Path.GetFileName(_stateFile) + ")";
             return;
         }
         machine.Post(() =>

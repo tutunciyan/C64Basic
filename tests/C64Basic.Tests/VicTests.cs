@@ -354,16 +354,4 @@ public class VicTests
         Assert.Equal(0x1B, bus.Read(0xD011)); // bit 7 is the raster line, which is below 256
     }
 
-    [Fact]
-    public void BasicCanPlaySpriteGame()
-    {
-        // 10 POKE the sprite pointer and registers from BASIC, then check a collision
-        var (_, interp, _) = Basic.Session(
-            "FOR I=0 TO 62:POKE 832+I,255:NEXT",
-            "POKE 2040,13:POKE 2041,13",
-            "POKE 53248,100:POKE 53249,100:POKE 53250,105:POKE 53251,105",
-            "POKE 53269,3");
-        Assert.Equal(3, interp.Bus.Read(0xD01E));
-        Assert.Equal(" 3 \n", Basic.Run("POKE 53269,3:PRINT PEEK(53269)"));
-    }
 }

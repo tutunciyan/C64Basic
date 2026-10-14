@@ -2,7 +2,6 @@ bin/
 obj/
 .vs/
 *.user
-/src/C64Basic.Console/Properties/launchSettings.json
 /c64-*.bmp
 roms/
 /src/C64Basic.Gui/Properties/launchSettings.json

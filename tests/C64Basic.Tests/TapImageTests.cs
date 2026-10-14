@@ -238,19 +238,4 @@ public class TapImageTests
         Assert.Equal("UTIL", again.Read("U?IL").Name);
     }
 
-    [Fact]
-    public void AMountedTapeWorksWithSaveAndLoad()
-    {
-        var console = new TestConsole();
-        var interp = new C64Basic.Core.Runtime.Interpreter(console, new MemoryFileSystem());
-        var tape = new TapImage();
-        interp.MountDrive(1, tape);
-        interp.ProcessLine("10 PRINT \"FROM TAPE\"");
-        interp.ProcessLine("SAVE \"TUNE\",1");
-        interp.ProcessLine("NEW");
-        interp.ProcessLine("LOAD \"TUNE\",1");
-        interp.ProcessLine("RUN");
-        Assert.EndsWith("FOUND TUNE\nLOADING\nFROM TAPE\n", console.Output);
-        Assert.Single(tape.Directory());
-    }
 }

@@ -1,5 +1,13 @@
 # Unreleased
 
+**Removed: the BASIC interpreter mode.** Only the real machine is left: the C64 ROMs on the 6502, the real 1541, the ROM dumps are required
+(`./roms`, `roms` next to the program, or `--rom-dir`; a missing one is reported by name).
+- Gone: the terminal front end (`C64Basic.Console`), the Lexer, Parser, interpreter, its extensions (`RENUMBER`, `FIND`, `TRACE`, `AUTO`,
+  `DELETE`, ...), the file-level disk drive and host-directory drive, the built-in KERNAL traps, `--strict`, `--rom-dir` as a switch for ROM
+  mode (it only picks the folder now), `samples/*.bas`, and the tests of all that (the machine, disk-image, VIC-II, SID, CIA and CPU tests stay).
+- The window title and options are those of ROM mode only; `--help` lists them. The CI GUI smoke test is gone with it (CI has no ROMs).
+- The older versions keep working from their git tags (0.4.0 and before).
+
 **Sound**
 - ROM mode window: SID register writes are stamped with the machine's own time and replayed in the audio callback 60 ms behind it
   (`Sid.Clock`), instead of the callback sampling whatever the registers held when a buffer was made. Notes that start and stop within one

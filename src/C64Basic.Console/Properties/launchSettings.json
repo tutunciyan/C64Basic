@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "C64Basic.Console": {
+      "commandName": "Project",
+      "commandLineArgs": "--width 80 --rom-dir roms --disk samples/1943.g64"
+    }
+  }
+}

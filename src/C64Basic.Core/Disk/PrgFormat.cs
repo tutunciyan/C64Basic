@@ -142,6 +142,4 @@ public static class PrgFormat
         }
         return lines;
     }
-
-    public static int LoadAddress(ReadOnlySpan<byte> prg) => prg.Length >= 2 ? prg[0] | prg[1] << 8 : 0;
 }

@@ -85,29 +85,6 @@ static class KeyMap
         return m;
     }
 
-    /// <summary>Characters typed at the prompt by keys that produce no text event.</summary>
-    public static char? Typed(Scancode key, bool shift) => key switch
-    {
-        Scancode.ScancodeReturn or Scancode.ScancodeKPEnter => '\r',
-        Scancode.ScancodeBackspace => '\u0014',
-        Scancode.ScancodeDelete => '\u0014',
-        Scancode.ScancodeInsert => '\u0094',
-        Scancode.ScancodeHome => shift ? '\u0093' : '\u0013',
-        Scancode.ScancodeDown => '\u0011',
-        Scancode.ScancodeUp => '\u0091',
-        Scancode.ScancodeRight => '\u001d',
-        Scancode.ScancodeLeft => '\u009d',
-        Scancode.ScancodeF1 => '\u0085',
-        Scancode.ScancodeF2 => '\u0089',
-        Scancode.ScancodeF3 => '\u0086',
-        Scancode.ScancodeF4 => '\u008a',
-        Scancode.ScancodeF5 => '\u0087',
-        Scancode.ScancodeF6 => '\u008b',
-        Scancode.ScancodeF7 => '\u0088',
-        Scancode.ScancodeF8 => '\u008c',
-        _ => null,
-    };
-
     static readonly char[] ControlColors = { '\u0090', '\u0005', '\u001c', '\u009f', '\u009c', '\u001e', '\u001f', '\u009e' };
     static readonly char[] CommodoreColors = { '\u0081', '\u0095', '\u0096', '\u0097', '\u0098', '\u0099', '\u009a', '\u009b' };
 

@@ -18,56 +18,30 @@ public sealed class DriveException : Exception
     public int Track { get; }
     public int Sector { get; }
 
-    public DriveException(int code, int track = 0, int sector = 0) : base(DriveStatus.MessageFor(code))
+    public DriveException(int code, int track = 0, int sector = 0) : base(MessageFor(code))
     {
         Code = code;
         Track = track;
         Sector = sector;
     }
-}
-
-/// <summary>The drive's error-channel state.</summary>
-public readonly record struct DriveStatus(int Code, string Message, int Track = 0, int Sector = 0)
-{
-    /// <summary>Raw bytes the next reads of the command channel return instead of the status (the answer to M-R).</summary>
-    public byte[]? Reply { get; init; }
-
-    public static readonly DriveStatus Ok = new(0, "OK");
-
-    public static DriveStatus Of(int code, int track = 0, int sector = 0) => new(code, MessageFor(code), track, sector);
-
-    public static DriveStatus Scratched(int count) => new(1, "FILES SCRATCHED", count);
-
-    public override string ToString() => $"{Code:00}, {Message},{Track:00},{Sector:00}";
 
     public static string MessageFor(int code) => code switch
     {
         0 => "OK",
-        1 => "FILES SCRATCHED",
-        20 => "READ ERROR",
         26 => "WRITE PROTECT ON",
-        30 => "SYNTAX ERROR",
-        31 => "SYNTAX ERROR",
-        32 => "SYNTAX ERROR",
         33 => "SYNTAX ERROR",
         34 => "SYNTAX ERROR",
         39 => "FILE NOT FOUND",
         50 => "RECORD NOT PRESENT",
         51 => "OVERFLOW IN RECORD",
         52 => "FILE TOO LARGE",
-        60 => "WRITE FILE OPEN",
-        61 => "FILE NOT OPEN",
         62 => "FILE NOT FOUND",
         63 => "FILE EXISTS",
         64 => "FILE TYPE MISMATCH",
         65 => "NO BLOCK",
         66 => "ILLEGAL TRACK AND SECTOR",
         67 => "ILLEGAL SYSTEM T OR S",
-        70 => "NO CHANNEL",
-        71 => "DIR ERROR",
         72 => "DISK FULL",
-        73 => "CBM DOS V2.6 1541",
-        74 => "DRIVE NOT READY",
         _ => "UNKNOWN ERROR",
     };
 }
@@ -171,29 +145,12 @@ public static class DosText
         return pattern.Length == name.Length;
     }
 
-    public static bool HasWildcard(string name) => name.AsSpan().IndexOfAny('*', '?') >= 0;
-
     /// <summary>Throws the DOS error for a name that cannot be stored.</summary>
     public static void ValidateName(string name)
     {
         if (name.Length == 0) throw new DriveException(34);
         if (name.Length > 16 || name.IndexOfAny(new[] { '*', '?', ',', ':', '=' }) >= 0) throw new DriveException(33);
     }
-}
-
-/// <summary>The buffers of open direct-access channels (OPEN 5,8,5,"#"), which the block commands read and write.</summary>
-public interface IBlockChannels
-{
-    /// <summary>The 256-byte buffer of a channel (its secondary address), or null if none is open.</summary>
-    byte[]? Buffer(int channel);
-
-    void SetPointer(int channel, int pointer);
-
-    /// <summary>
-    /// The P command: positions a relative file's channel at a record (1-based) and a byte in it (1-based). Returns the status
-    /// (50 if the record is past the end of the file), or null if the channel is not a relative file.
-    /// </summary>
-    DriveStatus? Position(int channel, int record, int position);
 }
 
 /// <summary>A relative file: fixed-length records, addressed by number.</summary>

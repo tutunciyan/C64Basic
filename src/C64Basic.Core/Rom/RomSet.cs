@@ -1,7 +1,7 @@
 namespace C64Basic.Core.Rom;
 
 /// <summary>
-/// The ROM dumps ROM mode needs: the BASIC and KERNAL ROMs of the C64 (8 KB each), the 1541's DOS ROM (16 KB) and optionally the
+/// The ROM dumps the machine needs: the BASIC and KERNAL ROMs of the C64 (8 KB each), the 1541's DOS ROM (16 KB) and optionally the
 /// character generator (4 KB). They are copyrighted and not part of this project; <see cref="Find"/> looks for them in a folder.
 /// </summary>
 public sealed class RomSet
@@ -68,8 +68,23 @@ public sealed class RomSet
             notes.Add($"{role}: {Path.GetFileName(path)}, {(Known.TryGetValue(crc, out var part) ? part : $"unrecognised, CRC {crc:X8}")}");
         }
         if (missing.Count > 0)
-            throw new FileNotFoundException($"ROM mode needs ROM dumps in {directory}; missing: {string.Join(", ", missing)}");
+            throw new FileNotFoundException($"The C64 needs ROM dumps in {directory}; missing: {string.Join(", ", missing)}");
         return new RomSet(found[0], found[1], found[2], found[3], notes);
+    }
+
+    /// <summary>
+    /// <paramref name="directory"/> if given, else the first of <c>./roms</c> and <c>roms</c> next to the program that exists. Throws a
+    /// <see cref="FileNotFoundException"/> that says which files are needed and where they were looked for.
+    /// </summary>
+    public static RomSet Locate(string? directory)
+    {
+        if (directory != null) return Find(directory);
+        string[] candidates = { Path.Combine(Environment.CurrentDirectory, "roms"), Path.Combine(AppContext.BaseDirectory, "roms") };
+        foreach (string candidate in candidates)
+            if (Directory.Exists(candidate)) return Find(candidate);
+        throw new FileNotFoundException(
+            "The ROM dumps are needed and were not found. Put basic-901226-01.bin (8 KB), kernal-901227-03.bin (8 KB) and "
+            + "dos1541ii-251968-03.bin (16 KB) in a folder named roms (looked in " + string.Join(" and ", candidates) + "), or pass --rom-dir <folder>.");
     }
 
     public static uint Crc32(ReadOnlySpan<byte> data)

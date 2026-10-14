@@ -7,20 +7,27 @@ public class BusTests
     [Fact]
     public void PokeBorderReachesVic()
     {
-        var (_, interp, _) = Basic.Session("POKE 53280,3");
-        Assert.Equal(3, interp.Bus.Vic.Border);
+        var bus = new Bus();
+        bus.Write(53280, 3);
+        Assert.Equal(3, bus.Vic.Border);
     }
 
     [Fact]
-    public void VicColourRegistersReadWithUpperBitsSet() =>
-        Assert.Equal(" 243 \n", Basic.Run("POKE 53280,3:PRINT PEEK(53280)"));
+    public void VicColourRegistersReadWithUpperBitsSet()
+    {
+        var bus = new Bus();
+        bus.Write(53280, 3);
+        Assert.Equal(243, bus.Read(53280));
+    }
 
     [Fact]
     public void VicRegistersMirrorEvery64Bytes()
     {
-        var (_, interp, _) = Basic.Session("POKE 53280+64,5", "POKE 53281+128,7");
-        Assert.Equal(5, interp.Bus.Vic.Border);
-        Assert.Equal(7, interp.Bus.Vic.Background);
+        var bus = new Bus();
+        bus.Write(53280 + 64, 5);
+        bus.Write(53281 + 128, 7);
+        Assert.Equal(5, bus.Vic.Border);
+        Assert.Equal(7, bus.Vic.Background);
     }
 
     [Fact]
@@ -33,30 +40,42 @@ public class BusTests
     }
 
     [Fact]
-    public void ColorRamKeepsFourBits() =>
-        Assert.Equal(" 5 \n", Basic.Run("POKE 55296,37:PRINT PEEK(55296)"));
+    public void ColorRamKeepsFourBits()
+    {
+        var bus = new Bus();
+        bus.Write(55296, 37);
+        Assert.Equal(5, bus.Read(55296));
+    }
 
     [Fact]
-    public void UnmappedIoActsAsStorage() =>
-        Assert.Equal(" 7  129 \n", Basic.Run("POKE 56832,7:PRINT PEEK(56832);PEEK(56334)"));
+    public void UnmappedIoActsAsStorage()
+    {
+        var bus = new Bus();
+        bus.Write(56832, 7);
+        Assert.Equal(7, bus.Read(56832));
+        Assert.Equal(129, bus.Read(56334));
+    }
 
     [Fact]
     public void WritesWithIoHiddenGoToRamNotChips()
     {
-        var (_, interp, _) = Basic.Session("POKE 1,52", "POKE 53280,9");
-        Assert.Equal(14, interp.Bus.Vic.Border);
-        Assert.Equal(9, interp.Bus.Ram[53280]);
-        var (output, _, _) = Basic.Session("POKE 1,52", "POKE 53280,9", "PRINT PEEK(53280)");
-        Assert.Equal(" 9 \n", output);
+        var bus = new Bus();
+        bus.Write(1, 52);
+        bus.Write(53280, 9);
+        Assert.Equal(14, bus.Vic.Border);
+        Assert.Equal(9, bus.Ram[53280]);
+        Assert.Equal(9, bus.Read(53280));
     }
 
     [Fact]
     public void CharRomHidesIoForReadsButWritesGoToRam()
     {
-        var (_, interp, _) = Basic.Session("POKE 1,51", "POKE 53280,9");
-        Assert.Equal(14, interp.Bus.Vic.Border);
-        Assert.Equal(9, interp.Bus.Ram[53280]);
-        Assert.Equal(interp.Bus.Read(53248 + 8), C64Basic.Core.Runtime.CharRom.Read(53248 + 8));
+        var bus = new Bus();
+        bus.Write(1, 51);
+        bus.Write(53280, 9);
+        Assert.Equal(14, bus.Vic.Border);
+        Assert.Equal(9, bus.Ram[53280]);
+        Assert.Equal(bus.Read(53248 + 8), C64Basic.Core.Runtime.CharRom.Read(53248 + 8));
     }
 
     [Fact]

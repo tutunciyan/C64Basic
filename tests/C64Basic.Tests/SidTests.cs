@@ -192,16 +192,6 @@ public class SidTests
         Assert.True(Render(bus, 2000).Max() > 0);
     }
 
-    [Fact]
-    public void BasicCanPlayANote()
-    {
-        var (_, interp, _) = Basic.Session(
-            "POKE 54296,15:POKE 54277,0:POKE 54278,240",
-            "POKE 54273,29:POKE 54272,69:POKE 54276,17");
-        var buffer = new short[Rate];
-        interp.Bus.Sound.Render(buffer, Rate);
-        Assert.InRange(ZeroCrossings(buffer), 870, 890);
-    }
 }
 
 public class SidAccuracyTests

@@ -32,12 +32,6 @@ public class CiaTests
         public void Write(int a, int v) => Bus.Write(a, (byte)v);
     }
 
-    static (Interpreter Interp, TestConsole Console) Session()
-    {
-        var console = new TestConsole();
-        return (new Interpreter(console, new MemoryFileSystem()), console);
-    }
-
     [Fact]
     public void KernalDefaultsMatchAfterReset()
     {
@@ -215,28 +209,6 @@ public class CiaTests
     }
 
     [Fact]
-    public void Peek197IsPlainRamWithoutInput() =>
-        Assert.Equal(" 5 \n", Basic.Run("POKE 197,5:PRINT PEEK(197)"));
-
-    [Fact]
-    public void BasicReadsTheKeyboardWithPeek()
-    {
-        var (interp, console) = Session();
-        interp.Bus.Input = new TestInput().Press(9);                  // W
-        interp.ProcessLine("PRINT PEEK(197)");
-        Assert.Equal(" 9 \n", console.Output);
-    }
-
-    [Fact]
-    public void BasicJoystickReadLikeTheClassicIdiom()
-    {
-        var (interp, console) = Session();
-        interp.Bus.Input = new TestInput().Joy(2, 0b10010);           // fire + down
-        interp.ProcessLine("J=PEEK(56320) AND 31:PRINT 31-J");
-        Assert.Equal(" 18 \n", console.Output);
-    }
-
-    [Fact]
     public void TimeOfDayRunsAndIsBcd()
     {
         var c = new Clocked();
@@ -274,24 +246,6 @@ public class CiaTests
         c.Write(0xDC08, 0);
         c.Now += 5;
         Assert.Equal(0x05, c.Read(0xDC09));
-    }
-
-    [Fact]
-    public void JiffyClockAtZeroPageFollowsTi()
-    {
-        var (interp, console) = Session();
-        interp.Bus.Seconds = () => 10;
-        interp.ProcessLine("PRINT TI;PEEK(160)*65536+PEEK(161)*256+PEEK(162)");
-        Assert.Equal(" 600  600 \n", console.Output);
-    }
-
-    [Fact]
-    public void PokingTheJiffyClockSetsTi()
-    {
-        var (interp, console) = Session();
-        interp.Bus.Seconds = () => 100;
-        interp.ProcessLine("POKE 160,0:POKE 161,1:POKE 162,44:PRINT TI");
-        Assert.Equal(" 300 \n", console.Output);
     }
 
     [Fact]

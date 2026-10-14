@@ -41,6 +41,13 @@ public sealed partial class Vic2 : IMemoryMapped
     public Vic2(Bus bus)
     {
         _bus = bus;
+        SetDefaults();
+        _reg.CopyTo(_baseRegs, 0);
+    }
+
+    void SetDefaults()
+    {
+        Array.Clear(_reg);
         _reg[Control1] = 0x1B;
         _reg[Control2] = 0xC8;
         _reg[MemoryPointers] = 0x15;
@@ -49,7 +56,6 @@ public sealed partial class Vic2 : IMemoryMapped
         _reg[SpriteMulticolor0] = 4;
         _reg[SpriteMulticolor1] = 0;
         for (int n = 0; n < 8; n++) _reg[SpriteColor0 + n] = (byte)(n < 7 ? n + 1 : 12);
-        _reg.CopyTo(_baseRegs, 0);
     }
 
     public int Border => _reg[BorderRegister] & 15;
@@ -209,20 +215,26 @@ public sealed partial class Vic2 : IMemoryMapped
     }
 
     public byte Read(int address)
+        => ReadRegister(address, sideEffects: true);
+
+    public byte Peek(int address)
+        => ReadRegister(address, sideEffects: false);
+
+    byte ReadRegister(int address, bool sideEffects)
     {
         int r = RegisterOf(address);
         if (r < 0) return 0xFF;
         switch (r)
         {
             case Control1:
-                PollRaster();
+                if (sideEffects) PollRaster();
                 return (byte)((_reg[Control1] & 0x7F) | ((Raster >> 8) << 7));
             case RasterLine:
-                PollRaster();
+                if (sideEffects) PollRaster();
                 return (byte)(Raster & 0xFF);
             case IrqFlags:
                 {
-                    PollRaster();
+                    if (sideEffects) PollRaster();
                     int flags = _reg[IrqFlags] & 0x0F;
                     return (byte)(0x70 | flags | ((flags & _reg[IrqEnable] & 0x0F) != 0 ? 0x80 : 0));
                 }
@@ -231,16 +243,16 @@ public sealed partial class Vic2 : IMemoryMapped
             case MemoryPointers: return (byte)(_reg[MemoryPointers] | 1);
             case SpriteSpriteCollision:
                 {
-                    ComputeCollisions();
+                    if (sideEffects) ComputeCollisions();
                     byte v = _spriteSprite;
-                    _spriteSprite = 0;
+                    if (sideEffects) _spriteSprite = 0;
                     return v;
                 }
             case SpriteBackgroundCollision:
                 {
-                    ComputeCollisions();
+                    if (sideEffects) ComputeCollisions();
                     byte v = _spriteBackground;
-                    _spriteBackground = 0;
+                    if (sideEffects) _spriteBackground = 0;
                     return v;
                 }
         }
@@ -301,6 +313,25 @@ public sealed partial class Vic2 : IMemoryMapped
         _reg.CopyTo(_baseRegs, 0);
         _baseLine = CurrentLine;
         ResetPointerLog();
+    }
+
+    internal void Reset()
+    {
+        lock (_composeGate)
+        {
+            SetDefaults();
+            _rasterCompare = 0;
+            _spriteSprite = _spriteBackground = 0;
+            _lightPenFrame = -1;
+            _stallVersion++;
+            _stallSeenVersion = 0;
+            _stallFirstLine = long.MinValue;
+            _lastLine = CurrentLine;
+            _reg.CopyTo(_baseRegs, 0);
+            _baseLine = CurrentLine;
+            _log.Clear();
+            ResetPointerLog();
+        }
     }
 
     /// <summary>

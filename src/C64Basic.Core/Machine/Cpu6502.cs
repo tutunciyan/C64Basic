@@ -12,6 +12,7 @@ public enum CpuStop
 public interface ICpuMemory
 {
     int Read(int address);
+    int Peek(int address) => Read(address);
     void Write(int address, byte value);
 }
 
@@ -163,7 +164,7 @@ public sealed class Cpu6502
     {
         get
         {
-            int op = _mem.Read(PC & 0xFFFF);
+            int op = _mem.Peek(PC & 0xFFFF);
             int length = BaseCycles[op];
             if (length == 0) UnstableCycles.TryGetValue(op, out length);
             if (length == 0) return Cycles;
@@ -205,7 +206,7 @@ public sealed class Cpu6502
     }
 
     /// <summary>The byte at the program counter (for a message about where the processor stopped).</summary>
-    public int PeekOpcode() => _mem.Read(PC & 0xFFFF);
+    public int PeekOpcode() => _mem.Peek(PC & 0xFFFF);
 
     /// <summary>The SO pin: a falling edge sets the V flag (the 1541's gate array does this when a byte has been read from the disk).</summary>
     public void SetOverflow() => P |= FlagV;

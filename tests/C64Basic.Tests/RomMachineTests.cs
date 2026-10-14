@@ -38,6 +38,28 @@ public class RomMachineTests
         return bus;
     }
 
+    static byte[] VersionOneState(RomMachine machine)
+    {
+        using var busStream = new MemoryStream();
+        using (var busWriter = new BinaryWriter(busStream, System.Text.Encoding.UTF8, leaveOpen: true))
+            machine.Bus.SaveState(busWriter);
+        byte[] bus = busStream.ToArray();
+
+        int cia1 = 65536 + ColorRam.Length + Bus.IoLength + Vic2.RegisterCount + sizeof(int) + 2 + 72;
+        const int ciaBaseLength = 40, ciaV2ExtraLength = 8;
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write("C64ROMSTATE");
+        writer.Write(1);
+        writer.Write(false);
+        machine.Cpu.SaveState(writer);
+        writer.Write(bus, 0, cia1);
+        writer.Write(bus, cia1, ciaBaseLength);
+        int cia2 = cia1 + ciaBaseLength + ciaV2ExtraLength;
+        writer.Write(bus, cia2, ciaBaseLength);
+        return stream.ToArray();
+    }
+
     [Fact]
     public void AtPowerOnAllRomsAndTheIoAreVisibleBecauseThePortPinsAreInputs()
     {
@@ -48,6 +70,26 @@ public class RomMachineTests
         Assert.Equal(0xEE, bus.Read(0xE000));
         Assert.Equal(0xEE, bus.Read(0xFFFF));
         Assert.Equal(0x37, bus.Read(1));                         // the input pins read high
+    }
+
+    [Fact]
+    public void VersionOneStateLoadsTheLegacyCiaLayout()
+    {
+        var roms = new RomSet(new byte[8192], new byte[8192], new byte[16384]);
+        var machine = new RomMachine(roms, withDrive: false);
+        machine.Bus.Ram[0x400] = 0x4A;
+        machine.Bus.Cia1.Write(0xDC02, 0x5A);
+        machine.Bus.Cia2.Write(0xDD02, 0x33);
+        byte[] state = VersionOneState(machine);
+        machine.Bus.Ram[0x400] = 0;
+        machine.Bus.Cia1.Write(0xDC02, 0);
+        machine.Bus.Cia2.Write(0xDD02, 0);
+
+        machine.LoadState(state);
+
+        Assert.Equal(0x4A, machine.Bus.Ram[0x400]);
+        Assert.Equal(0x5A, machine.Bus.Cia1.Read(0xDC02));
+        Assert.Equal(0x33, machine.Bus.Cia2.Read(0xDD02));
     }
 
     [Fact]

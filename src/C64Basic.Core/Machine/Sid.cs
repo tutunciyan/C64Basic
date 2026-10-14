@@ -142,6 +142,29 @@ public sealed class Sid : IMemoryMapped
         }
     }
 
+    internal void Reset()
+    {
+        lock (_gate)
+        {
+            _pending.Clear();
+            _renderStarted = false;
+            _renderTime = 0;
+            _low = _band = 0;
+            foreach (var v in _voice)
+            {
+                v.Frequency = v.PulseWidth = v.Control = v.AttackDecay = v.SustainRelease = 0;
+                v.Phase = 0;
+                v.Lfsr = 0x7FFFF8;
+                v.PhaseMsb = v.MsbRose = false;
+                v.Level = 0;
+                v.Stage = Stage.Release;
+                v.EnvCycles = 0;
+                v.Output = 0;
+            }
+            _filterCutoff = _filterControl = _modeVolume = 0;
+        }
+    }
+
     /// <summary>The registers; oscillator phase and envelopes start over, which is inaudible after a pause.</summary>
     internal void SaveState(BinaryWriter w)
     {

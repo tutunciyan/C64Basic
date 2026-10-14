@@ -39,6 +39,53 @@ public class BusTests
     }
 
     [Fact]
+    public void PowerOnResetsVicAndSidWithoutChangingTheSidModel()
+    {
+        double now = 0;
+        var bus = new Bus { Seconds = () => now };
+        bus.Sound.Model = Sid.SidModel.Mos8580;
+        bus.Sound.Clock = () => 1;
+        bus.Write(0xD020, 3);
+        bus.Write(0xD021, 2);
+        bus.Write(0xD012, 1);
+        bus.Write(0xD01A, 1);
+        bus.Write(0xD418, 15);
+        bus.Write(0xD412, 0x21);
+        now = Vic2.SecondsAt(2);
+        Assert.True(bus.Vic.InterruptPending);
+
+        bus.PowerOn();
+
+        Assert.Equal(14, bus.Vic.Border);
+        Assert.Equal(6, bus.Vic.Background);
+        Assert.False(bus.Vic.InterruptPending);
+        Assert.Equal(0, bus.Read(0xD41C));
+        Assert.Equal(Sid.SidModel.Mos8580, bus.Sound.Model);
+        var samples = new short[128];
+        bus.Sound.Render(samples, 44100);
+        Assert.All(samples, sample => Assert.Equal(0, sample));
+    }
+
+    [Fact]
+    public void OpcodePeekDoesNotAcknowledgeCiaInterrupts()
+    {
+        double now = 0;
+        var bus = new Bus { Seconds = () => now };
+        bus.Write(0xDC0E, 0);
+        bus.Write(0xDC04, 0);
+        bus.Write(0xDC05, 0);
+        bus.Write(0xDC0D, 0x81);
+        bus.Write(0xDC0E, 1);
+        now += 2.0 / Cia.ClockHz;
+
+        var cpu = new Cpu6502(bus) { PC = 0xDC0D };
+        Assert.Equal(5, cpu.NextAccessCycle);
+        Assert.True(bus.Cia1.InterruptPending);
+        Assert.Equal(0x81, bus.Read(0xDC0D));
+        Assert.False(bus.Cia1.InterruptPending);
+    }
+
+    [Fact]
     public void ColorRamKeepsFourBits()
     {
         var bus = new Bus();

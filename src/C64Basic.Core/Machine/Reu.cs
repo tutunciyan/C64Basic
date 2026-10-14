@@ -49,6 +49,12 @@ public sealed class Reu : IMemoryMapped
     byte VersionBit => (byte)(_memory.Length >= 256 * 1024 ? 0x10 : 0);
 
     public byte Read(int address)
+        => ReadRegister(address, sideEffects: true);
+
+    public byte Peek(int address)
+        => ReadRegister(address, sideEffects: false);
+
+    byte ReadRegister(int address, bool sideEffects)
     {
         int r = address & 0xFF;
         if (r > 0x0A) return 0xFF;
@@ -57,7 +63,7 @@ public sealed class Reu : IMemoryMapped
             case 0:
                 {
                     byte value = (byte)(_status | VersionBit);
-                    _status &= 0x1F;                         // reading clears the flags
+                    if (sideEffects) _status &= 0x1F;       // reading clears the flags
                     return value;
                 }
             case 1: return (byte)(_reg[1] | 0x00);
@@ -125,15 +131,13 @@ public sealed class Reu : IMemoryMapped
         int type = command & 3;
         int done = 0;
         bool verifyError = false;
-        var ram = _bus.Ram;
-
         for (; done < length; done++)
         {
             int c = _c64 & 0xFFFF, u = Wrap(_reu);
-            if (type == 0) _memory[u] = ram[c];
-            else if (type == 1) ram[c] = _memory[u];
-            else if (type == 2) { byte t = ram[c]; ram[c] = _memory[u]; _memory[u] = t; }
-            else if (ram[c] != _memory[u]) { verifyError = true; done++; break; }
+            if (type == 0) _memory[u] = (byte)_bus.Read(c);
+            else if (type == 1) _bus.Write(c, _memory[u]);
+            else if (type == 2) { byte t = (byte)_bus.Read(c); _bus.Write(c, _memory[u]); _memory[u] = t; }
+            else if (_bus.Read(c) != _memory[u]) { verifyError = true; done++; break; }
             if (!fixC64) _c64 = (_c64 + 1) & 0xFFFF;
             if (!fixReu) _reu = (_reu + 1) & 0xFFFFFF;
         }

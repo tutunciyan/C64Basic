@@ -96,6 +96,15 @@ public sealed class Drive1541 : ILockstepMember
             return address >> 8;                              // nothing there: the bus floats at the high byte
         }
 
+        public int Peek(int address)
+        {
+            address &= 0xFFFF;
+            if (address >= 0x8000) return _d.Rom[address & 0x3FFF];
+            if ((address & 0x1800) == 0x1800) return (address & 0x0400) == 0 ? _d.Via1.Peek(address) : _d.Via2.Peek(address);
+            if ((address & 0x1800) == 0) return _d.Ram[address & 0x7FF];
+            return address >> 8;
+        }
+
         public void Write(int address, byte value)
         {
             address &= 0xFFFF;

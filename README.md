@@ -200,6 +200,8 @@ A terminal never reports a key release, so each typed key is held on the key mat
   while the window is open.
   F9 toggles warp speed, F10 resets, F11 or Alt+Enter toggles full screen, F12 saves a screenshot. Dropping a `.d64`, `.t64`, `.tap`,
   `.prg` or `.bas` file on the window mounts or loads it.
+- START (Ctrl+Enter, ROM mode): resets and runs `LOAD"*",8,1` + `RUN` on the disk in drive 8; `--start` does the same at launch
+  (`--rom-dir roms --disk game.d64 --start`). Opening a disk with OPEN or by drop already does this.
 - Keyboard joystick: the JOY button (Ctrl+J) cycles the cursor keys between being cursor keys, a joystick on port 1 and a joystick on port 2,
   with Space or Right Ctrl as fire (Space still types a space); the numpad follows to the same port. Games differ in the port they read:
   Ms. Pac-Man reads port 1, many read port 2. Pause moves the numpad joystick between the ports without touching the cursor keys.

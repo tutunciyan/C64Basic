@@ -61,6 +61,7 @@ static unsafe partial class SdlHost
         {
             new() { Label = "OPEN", Icon = ToolIcons.Open, Hint = "pick a disk, tape, cartridge or program file (Ctrl+O)", Click = AskForFile },
             joyButton,
+            new() { Label = "START", Icon = ToolIcons.Start, Hint = "reset, then load and run the first program of the disk (Ctrl+Enter)", Click = () => RomStartDisk(machine) },
             new() { Label = "RESET", Icon = ToolIcons.Reset, Hint = "reset the machine (F10)", Click = () => machine.Post(machine.Reset) },
             new() { Label = "WARP", Icon = ToolIcons.Warp, Hint = "warp speed (F9)", Click = () => _romWarp = !_romWarp, On = () => _romWarp },
             new() { Label = "PAUSE", Icon = ToolIcons.Pause, Hint = "pause and show the registers (Scroll Lock)", Click = () => RomTogglePause(machine), On = () => machine.Paused },
@@ -214,6 +215,7 @@ static unsafe partial class SdlHost
         }
 
         if (!repeat && control && code == Scancode.ScancodeO) { AskForFile(); return; }
+        if (!repeat && control && code == Scancode.ScancodeReturn) { RomStartDisk(machine); return; }
         if (!repeat && control && code == Scancode.ScancodeJ) { CycleCursorJoystick(machine.Input, _joyButton); return; }
         if (!repeat && control && code is Scancode.ScancodeN or Scancode.ScancodeB) { RomSwapDisk(machine, code == Scancode.ScancodeN ? 1 : -1); return; }
         if (!repeat && control && code == Scancode.ScancodeT) { RomToggleTape(machine); return; }
@@ -251,6 +253,15 @@ static unsafe partial class SdlHost
     }
 
     // ---------- what the keys and the toolbar both do ----------
+    /// <summary>START / Ctrl+Enter: a fresh boot of the disk in drive 8 and its first program loaded and run.</summary>
+    static void RomStartDisk(RomMachine machine) =>
+        machine.Post(() =>
+        {
+            if (machine.DiskPath == null) { _statusMessage = "no disk in drive 8 (OPEN, --disk, or drop an image on the window)"; return; }
+            StartFromDisk(machine);
+            _statusMessage = "started from " + Path.GetFileName(machine.DiskPath);
+        });
+
     static void RomTogglePause(RomMachine machine)
     {
         machine.Paused = !machine.Paused;

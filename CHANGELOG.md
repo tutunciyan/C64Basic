@@ -6,6 +6,7 @@
   buffer (gates, fast arpeggios, drums) were being dropped or shifted, which sounded like breaking up.
 
 **Window**
+- A START button and Ctrl+Enter (ROM mode) reset and load + run the first program of the disk; `--start` does it at launch.
 - `--joy-keys <1|2>` starts with the cursor keys as the joystick (they were only a joystick after Ctrl+J / the JOY button).
 
 **VIC-II**

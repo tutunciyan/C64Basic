@@ -27,6 +27,7 @@ const string Usage = """
       --no-toolbar    leave out the toolbar above the picture (Ctrl+F12 switches it on and off)
       --lightpen      the mouse is a light pen on port 1 (hold the left button over the picture) instead of a paddle
       --joy <1|2>     joystick port the numpad drives (default 2; the Pause key switches); game controllers use port 2, then 1
+      --start         (ROM mode) load and run the first program of the disk in drive 8 at startup, like the START button (Ctrl+Enter)
       --joy-keys <1|2>  start with the cursor keys as the joystick on that port, Space = fire (Ctrl+J / the JOY button cycle off, 1, 2)
       --state <f>     file for Ctrl+S (save machine state) and Ctrl+L (load); default c64-state.sav
       --resume        load the state file at startup
@@ -54,6 +55,7 @@ var sidModel = Sid.SidModel.Mos6581;
 string? stateFile = null;
 bool resume = false;
 string? cart = null; int reuKb = 0;
+bool startDisk = false;
 string? program = null, tape = null, typeText = null, snapshot = null, chargen = null, romDir = null;
 var disks = new List<(int Device, string Path)>();
 
@@ -90,6 +92,7 @@ for (int i = 0; i < args.Length; i++)
             if (++i >= args.Length || !int.TryParse(args[i], out joyPort) || joyPort is < 1 or > 2)
             { Console.Error.WriteLine("--joy needs 1 or 2"); return 2; }
             break;
+        case "--start": startDisk = true; break;
         case "--joy-keys":
         {
             if (++i >= args.Length || !int.TryParse(args[i], out int keysPort) || keysPort is < 1 or > 2)
@@ -167,6 +170,7 @@ if (romDir != null)
         if (tape != null) machine.MountTapeFile(tape);
         if (reuKb != 0) machine.InsertReu(reuKb);
         if (cart != null) machine.InsertCartridge(C64Basic.Core.Machine.Cartridge.FromCrt(File.ReadAllBytes(cart)));
+        if (startDisk && typeText == null) typeText = "LOAD\"*\",8,1\rRUN\r";
         if (typeText != null) machine.Type(typeText);
         return SdlHost.RunRom(machine, scale, fullscreen, snapshot, joyPort, fast, stateFile, resume);
     }

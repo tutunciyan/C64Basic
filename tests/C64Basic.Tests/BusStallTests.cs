@@ -133,9 +133,9 @@ public class BusStallTests
     static int InstructionsStartedIn(Cpu6502 cpu, long line)
     {
         cpu.Cycles = line * Line - 30;
-        while (cpu.Cycles < line * Line) cpu.StepNative();
+        while (cpu.Cycles < line * Line) cpu.Step();
         int count = 0;
-        while (cpu.Cycles < (line + 1) * Line) { cpu.StepNative(); count++; }
+        while (cpu.Cycles < (line + 1) * Line) { cpu.Step(); count++; }
         return count;
     }
 

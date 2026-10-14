@@ -79,7 +79,7 @@ public sealed class Drive1541 : ILockstepMember
     public void Step()
     {
         Mechanics.AdvanceTo(Cpu.Cycles);
-        Cpu.StepNative();
+        Cpu.Step();
     }
 
     sealed class Memory : ICpuMemory

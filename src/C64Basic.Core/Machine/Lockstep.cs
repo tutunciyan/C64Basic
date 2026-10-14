@@ -91,7 +91,7 @@ public sealed class CpuMember : ILockstepMember
 
     public void Step()
     {
-        Cpu.StepNative();
+        Cpu.Step();
         AfterStep?.Invoke(Cpu);
     }
 }

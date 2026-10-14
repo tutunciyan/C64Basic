@@ -11,7 +11,7 @@ namespace C64Basic.Core.Rom;
 /// A whole Commodore 64 running its own ROMs: the real KERNAL and BASIC on the 6502 (no emulated routines, the real interrupt
 /// handler, keyboard scan, serial bus routines), with a real 1541 beside it, a 6502 running the DOS ROM on a disk image, joined
 /// by the serial bus. The two processors run in lockstep, so a fast loader that uploads its own code to the drive and then races the
-/// bus works. The BASIC interpreter written for this project is not involved; this is the other, slower and exact way to run.
+/// bus works.
 /// </summary>
 public sealed class RomMachine
 {
@@ -121,7 +121,7 @@ public sealed class RomMachine
             var cpu = _m.Cpu;
             var tape = _m.Tape;
             if (tape.Active) tape.Update(cpu.Cycles, _m.Bus.CassetteMotor, _m.Bus.CassetteWrite, _m.Bus.Cia1.PulseFlag);
-            cpu.StepNative();
+            cpu.Step();
             if (cpu.StopReason != CpuStop.None)
             {
                 _m.HaltReason = $"{cpu.StopReason} at ${cpu.PC:X4} (opcode ${_m.Bus.Read(cpu.PC):X2})";

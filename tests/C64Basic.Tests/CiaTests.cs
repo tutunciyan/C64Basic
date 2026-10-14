@@ -190,25 +190,6 @@ public class CiaTests
     }
 
     [Fact]
-    public void Peek197GivesKernalKeyIndex()
-    {
-        Assert.Equal(64, new Bus { Input = new TestInput() }.Read(197));
-        Assert.Equal(1, new Bus { Input = new TestInput().Press(1) }.Read(197));    // RETURN
-        Assert.Equal(60, new Bus { Input = new TestInput().Press(60) }.Read(197));  // SPACE
-    }
-
-    [Fact]
-    public void ShiftKeysAreReportedInFlagsNotAsKeys()
-    {
-        var bus = new Bus { Input = new TestInput().Press(15).Press(58).Press(10) };  // L-shift, CTRL, A
-        Assert.Equal(10, bus.Read(197));
-        Assert.Equal(1 | 4, bus.Read(653));
-        bus = new Bus { Input = new TestInput().Press(61).Press(52) };                // C=, R-shift
-        Assert.Equal(64, bus.Read(197));
-        Assert.Equal(1 | 2, bus.Read(653));
-    }
-
-    [Fact]
     public void TimeOfDayRunsAndIsBcd()
     {
         var c = new Clocked();

@@ -19,7 +19,7 @@ public sealed class Bus : ICpuMemory
 {
     public const int IoStart = 0xD000, IoLength = 0x1000;
 
-    /// <summary>The 64K of RAM. Writes made through this array bypass banking and <see cref="Written"/>.</summary>
+    /// <summary>The 64K of RAM. Writes made through this array bypass banking.</summary>
     public byte[] Ram { get; } = new byte[65536];
 
     public Vic2 Vic { get; }
@@ -38,16 +38,16 @@ public sealed class Bus : ICpuMemory
     public Cia1 Cia1 { get; }
     public Cia2 Cia2 { get; }
 
-    /// <summary>Keys and joysticks, supplied by the host. Without one nothing is pressed and PEEK 197/653 read plain RAM.</summary>
+    /// <summary>Keys and joysticks, supplied by the host. Without one nothing is pressed.</summary>
     public IInputDevice? Input { get; set; }
 
     /// <summary>The CPU's IRQ line: CIA 1 (system timer) or the VIC-II.</summary>
     public bool IrqLine => Cia1.InterruptPending || Vic.InterruptPending || (Expansion?.IrqPending ?? false);
 
-    /// <summary>The RAM expansion unit on the expansion port, if any (ROM mode).</summary>
+    /// <summary>The RAM expansion unit on the expansion port, if any .</summary>
     public Reu? Expansion { get; private set; }
 
-    /// <summary>The cartridge on the expansion port, if any (ROM mode).</summary>
+    /// <summary>The cartridge on the expansion port, if any .</summary>
     public Cartridge? Cart { get; private set; }
 
     /// <summary>Plugs a cartridge in (or pulls it out with null). The machine should be reset after.</summary>
@@ -72,66 +72,21 @@ public sealed class Bus : ICpuMemory
 
     readonly Stopwatch _clock = Stopwatch.StartNew();
 
-    Func<double> _seconds;
-    double _offset, _cycleOrigin;
-    Func<long>? _cycleSource;
-
-    /// <summary>True while <see cref="Seconds"/> is the built-in clock (tests and hosts may replace it with their own).</summary>
-    public bool ClockIsDefault { get; private set; } = true;
-
-    /// <summary>Seconds since power-on. Raster, CIA timers, time of day and TI all run from it; tests replace it.</summary>
-    public Func<double> Seconds
-    {
-        get => _seconds;
-        set { _seconds = value; ClockIsDefault = false; }
-    }
-
-    double DefaultSeconds() =>
-        _cycleSource != null ? _cycleOrigin + _cycleSource() / Cia.ClockHz : _clock.Elapsed.TotalSeconds + _offset;
-
-    /// <summary>
-    /// While machine code runs the built-in clock follows the CPU's cycle count instead of the wall clock, so the raster beam, the
-    /// CIA timers and the interrupts are exactly in step with the instructions. Time stays continuous. Does nothing if the host
-    /// has replaced the clock.
-    /// </summary>
-    internal void FollowCycles(Func<long> cycles)
-    {
-        if (!ClockIsDefault || _cycleSource != null) return;
-        double now = DefaultSeconds();
-        _cycleOrigin = now - cycles() / Cia.ClockHz;
-        _cycleSource = cycles;
-    }
-
-    internal void ReleaseCycles()
-    {
-        if (_cycleSource == null) return;
-        double now = DefaultSeconds();
-        _cycleSource = null;
-        _offset = now - _clock.Elapsed.TotalSeconds;
-    }
-
-    public bool FollowingCycles => _cycleSource != null;
-
-    /// <summary>The absolute cycle (as the VIC-II counts them) at which the CPU's cycle counter has a given value.</summary>
-    internal long AbsoluteCycleOf(long cpuCycles) => (long)Math.Floor(_cycleOrigin * Cia.ClockHz) + cpuCycles;
+    /// <summary>Seconds since power-on. Raster, CIA timers and time of day run from it; the machine and the tests replace it with the processor's own cycle count.</summary>
+    public Func<double> Seconds { get; set; }
 
     readonly byte[] _io = new byte[IoLength];
     readonly IMemoryMapped?[] _chips = new IMemoryMapped?[IoLength];
 
-    /// <summary>Raised after every <see cref="Write"/>; <c>io</c> is true when the write reached the I/O area.</summary>
-    public event Action<int, byte, bool>? Written;
-
     public Bus()
     {
-        _seconds = DefaultSeconds;
+        Seconds = () => _clock.Elapsed.TotalSeconds;
         Vic = new Vic2(this);
         Cia1 = new Cia1(this);
         Cia2 = new Cia2(this);
         Sound.Pot = ReadPot;
         Ram[0] = 0x2F;      // CPU port direction
         Ram[1] = 0x37;      // BASIC, KERNAL and I/O visible
-        Ram[646] = 14;      // text colour
-        InitialiseZeroPageAndVectors();
         Map(Vic2.Start, Vic2.Length, Vic);
         Map(Sid.Start, Sid.Length, Sound);
         Map(ColorRam.Start, ColorRam.Length, Color);
@@ -149,21 +104,6 @@ public sealed class Bus : ICpuMemory
         2 => Input?.Paddle(2, axis) ?? 0,
         _ => 0,
     };
-
-    /// <summary>The RAM vectors and BASIC pointers the KERNAL leaves after power-on, as machine code expects them.</summary>
-    void InitialiseZeroPageAndVectors()
-    {
-        void Word(int address, int value) { Ram[address] = (byte)value; Ram[address + 1] = (byte)(value >> 8); }
-        Word(43, 0x0801);   // start of BASIC
-        Word(51, 0xA000);   // bottom of strings
-        Word(53, 0xA000);   // top of strings
-        Word(55, 0xA000);   // top of BASIC memory
-        Word(0x314, 0xEA31); // IRQ
-        Word(0x316, 0xFE66); // BRK
-        Word(0x318, 0xFE47); // NMI
-        Ram[785] = 0x4C;    // USR: JMP to "illegal quantity"
-        Word(786, 0xB248);
-    }
 
     /// <summary>A byte of the I/O area as stored for addresses without a chip (the VIC bank bits come from CIA 2 through this).</summary>
     public byte IoByte(int address) => _chips[address - IoStart]?.Read(address) ?? _io[address - IoStart];
@@ -208,7 +148,7 @@ public sealed class Bus : ICpuMemory
         for (int a = start; a < start + length; a++) _chips[a - IoStart] = chip;
     }
 
-    // ---------- ROM mode ----------
+    // ---------- the ROMs ----------
     byte[]? _basicRom, _kernalRom;
 
     /// <summary>True when the real BASIC and KERNAL ROMs are in the memory map (see <see cref="EnableRomMode"/>).</summary>
@@ -228,7 +168,7 @@ public sealed class Bus : ICpuMemory
         PowerOn();
     }
 
-    /// <summary>RAM and chips as at power-on (ROM mode only).</summary>
+    /// <summary>RAM and chips as at power-on .</summary>
     public void PowerOn()
     {
         Array.Clear(Ram);
@@ -276,7 +216,6 @@ public sealed class Bus : ICpuMemory
             else if (address == 1) return (byte)PortRead;
             return Ram[address];
         }
-        if (Input != null && (address == 197 || address == 653)) return Keyboard.Read(Input, address);
         return Ram[address];
     }
 
@@ -319,6 +258,5 @@ public sealed class Bus : ICpuMemory
             if ((uint)pointer < 8) Vic.SpritePointerWritten(pointer, value);
         }
         if (address == 0xFF00) Expansion?.WroteFF00();
-        Written?.Invoke(address, value, io);
     }
 }

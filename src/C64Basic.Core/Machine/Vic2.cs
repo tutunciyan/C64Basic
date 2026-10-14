@@ -83,34 +83,6 @@ public sealed partial class Vic2 : IMemoryMapped
         return mask;
     }
 
-    /// <summary>
-    /// How many CPU cycles the VIC-II takes from the processor between two absolute cycles: about 40 on the first cycles of a
-    /// "bad line" (when it fetches the row of characters), and for every sprite shown on the next line 2 cycles at the sprite's own
-    /// place in the line (sprite 0 at cycle 58, then every 2 cycles, running over into the next line), the first one 1 more because
-    /// the chip pulls BA low 3 cycles ahead.
-    /// </summary>
-    public int StolenCycles(long from, long to)
-    {
-        int stolen = 0;
-        for (long n = Math.Max(0, from / CyclesPerLine - 1); n <= to / CyclesPerLine; n++)   // a line before: its sprite fetches run over
-        {
-            long badLine = n * CyclesPerLine + 12;                    // BA goes low at cycle 12 (the CPU stops at 15)
-            if (badLine > from && badLine <= to && IsBadLine((int)(n % RasterLines))) stolen += 40;
-            long first = n * CyclesPerLine + 58;                      // the first sprite's data is fetched at the end of this line
-            if (first + 14 <= from || first > to) continue;           // (sprite 7's fetch ends 14 cycles later)
-            int mask = SpriteMaskOnLine((int)((n + 1) % RasterLines));
-            bool leading = true;
-            for (int k = 0; k < 8; k++)
-            {
-                if ((mask >> k & 1) == 0) continue;
-                long at = first + 2 * k;
-                if (at > from && at <= to) stolen += leading ? 3 : 2;
-                leading = false;
-            }
-        }
-        return stolen;
-    }
-
     // ---------- BA and AEC: the processor halted cycle by cycle ----------
     // The line the CPU's RDY pin is on (BA) goes low a few cycles before the VIC-II needs the bus; the 6502 stops in its first read cycle
     // after that (writes carry on, three of them at most, which is why the chip warns three cycles ahead) and goes on when the line is

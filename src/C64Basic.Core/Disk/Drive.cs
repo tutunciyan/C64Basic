@@ -110,7 +110,7 @@ public interface IDiskDrive
         Write(name, FileType.Prg, prg, replace);
 }
 
-/// <summary>Conversions between the interpreter's strings and PETSCII bytes, and DOS file name matching.</summary>
+/// <summary>Conversions between strings and PETSCII bytes, and DOS file name matching.</summary>
 public static class DosText
 {
     public static byte ToByte(char c)

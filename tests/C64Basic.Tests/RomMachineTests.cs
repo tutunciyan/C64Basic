@@ -113,7 +113,7 @@ public class RomMachineTests
         var bus = new Bus();
         Assert.False(bus.RomMode);
         bus.Ram[0xA000] = 0x77;
-        Assert.Equal(0x77, bus.Read(0xA000));                    // no ROM image: the interpreter's memory map
+        Assert.Equal(0x77, bus.Read(0xA000));                    // no ROM image: plain RAM
     }
 
     [RomFact]
@@ -153,7 +153,7 @@ public class RomMachineTests
     }
 
     [RomFact]
-    public void BasicRunsOnTheRealInterpreter()
+    public void BasicRunsOnTheRealRom()
     {
         var m = Boot();
         if (m == null) return;

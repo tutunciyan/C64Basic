@@ -2,7 +2,7 @@ namespace C64Basic.Core.IO;
 
 /// <summary>
 /// Where a typed character sits on the C64 keyboard: the keys of the matrix (index = column * 8 + row, as in
-/// <see cref="ScreenConsole.SetKey"/>) that make it, including Shift where the character needs it. Used by hosts that only
+/// <see cref="InputState.SetKey"/>) that make it, including Shift where the character needs it. Used by hosts that only
 /// learn about typed characters (a terminal), to also drive the key matrix machine code scans.
 /// </summary>
 public static class KeyboardLayout

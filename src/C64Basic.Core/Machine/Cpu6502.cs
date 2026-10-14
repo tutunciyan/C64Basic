@@ -1,25 +1,12 @@
 namespace C64Basic.Core.Machine;
 
-/// <summary>Why <see cref="Cpu6502.Call"/> stopped.</summary>
+/// <summary>Why a processor stopped.</summary>
 public enum CpuStop
 {
     None,
-    /// <summary>The routine executed RTS back to its caller.</summary>
-    Returned,
-    /// <summary>BRK with the default KERNAL vector: the machine would drop back to BASIC.</summary>
-    Break,
-    /// <summary>An undocumented opcode, which is not implemented.</summary>
+    /// <summary>An undocumented opcode that is not implemented (the jams: $02, $12, ...).</summary>
     IllegalOpcode,
-    /// <summary>Execution reached a KERNAL or BASIC ROM address that has no emulation (there is no ROM image).</summary>
-    NoRom,
-    /// <summary><see cref="Cpu6502.Tick"/> asked to stop (RUN/STOP pressed).</summary>
-    Interrupted,
-    /// <summary>A trap ended the call.</summary>
-    Terminated,
 }
-
-/// <summary>What the CPU does after a trap has run in place of the code at its address.</summary>
-public enum TrapResult { Return, Continue, Stop }
 
 /// <summary>What a processor sees: 64K of address space. The C64's <see cref="Bus"/> and the 1541's memory map implement it.</summary>
 public interface ICpuMemory
@@ -30,40 +17,26 @@ public interface ICpuMemory
 
 /// <summary>
 /// An NMOS 6502: all 151 documented opcodes with cycle counts (page-crossing and branch penalties), decimal mode,
-/// read-modify-write dummy writes and IRQ/BRK sequencing. Memory goes through the <see cref="Bus"/>. The C64 ROMs are
-/// not present: <see cref="Traps"/> replace KERNAL and BASIC entry points with C# code.
+/// read-modify-write dummy writes, the unstable undocumented opcodes and IRQ/NMI/BRK sequencing through the vectors at $FFFA-$FFFF.
+/// It runs the C64 and the 1541; memory is whatever <see cref="ICpuMemory"/> it is given. Drive it with <see cref="Step"/>.
 /// </summary>
 public sealed class Cpu6502
 {
     public const int FlagC = 1, FlagZ = 2, FlagI = 4, FlagD = 8, FlagB = 16, FlagU = 32, FlagV = 64, FlagN = 128;
 
-    /// <summary>Address a called routine returns to; reaching it ends <see cref="Call"/>.</summary>
-    public const int ReturnAddress = 0xFFFF;
-
-    /// <summary>Cycles between <see cref="Tick"/> calls and between interrupt-line polls.</summary>
-    const int TickInterval = 1024, IrqPollInterval = 32;
-
     readonly ICpuMemory _mem;
-    readonly Bus? _bus;
-
-    /// <summary>
-    /// A processor running real ROM code: no traps, no emulated KERNAL or BASIC, interrupts and BRK always go through the vectors at
-    /// $FFFA-$FFFF, and the interrupt lines come from <see cref="IrqLine"/> and <see cref="NmiLine"/>. Used for the C64 in ROM mode
-    /// and for the 1541's own 6502. Drive it with <see cref="StepNative"/>.
-    /// </summary>
-    public bool Native { get; }
 
     /// <summary>A debugging hook called before every native step (to trace the program counter, or stop at an address).</summary>
     public Action<Cpu6502>? BeforeStep { get; set; }
 
-    /// <summary>The (level-triggered) IRQ line in native mode.</summary>
+    /// <summary>The (level-triggered) IRQ line.</summary>
     public Func<bool>? IrqLine { get; set; }
 
-    /// <summary>The (edge-triggered) NMI line in native mode.</summary>
+    /// <summary>The (edge-triggered) NMI line.</summary>
     public Func<bool>? NmiLine { get; set; }
 
     /// <summary>
-    /// How a chip that takes the bus (the VIC-II) holds this processor up, in native mode: given the cycle an instruction starts on, its
+    /// How a chip that takes the bus (the VIC-II) holds this processor up: given the cycle an instruction starts on, its
     /// length and which of its cycles are writes (bit n = cycle n; a halted 6502 waits in a read cycle but still gets a few writes in),
     /// the number of extra cycles before it is through. See <see cref="Vic2.StallCycles"/>.
     /// </summary>
@@ -74,29 +47,10 @@ public sealed class Cpu6502
     public long Cycles;
     public CpuStop StopReason { get; private set; }
 
-    /// <summary>Code that runs instead of the instruction at an address, typically a KERNAL routine.</summary>
-    public Dictionary<int, Func<Cpu6502, TrapResult>> Traps { get; } = new();
-
-    /// <summary>Called every ~1000 cycles with the total cycle count; return true to stop the program.</summary>
-    public Func<long, bool>? Tick { get; set; }
-
-    /// <summary>Called when the default KERNAL interrupt handler runs (the 60 Hz system IRQ).</summary>
-    public Action? SystemIrq { get; set; }
-
     bool _nmiActive;
 
-    /// <summary>
-    /// Cycle-exact mode for <see cref="Call"/>: the bus clock follows the instructions, interrupts are checked after every
-    /// instruction, and the VIC-II takes its cycles for bad lines and sprites. Off, interrupts are polled every 32 cycles and
-    /// time is the host's clock.
-    /// </summary>
-    public bool CycleAccurate { get; set; }
-
-    /// <summary>A processor for the BASIC interpreter's machine code: KERNAL and BASIC entry points are traps, see <see cref="Traps"/>.</summary>
-    public Cpu6502(Bus bus) { _bus = bus; _mem = bus; }
-
-    /// <summary>A native processor on any memory map (see <see cref="Native"/>).</summary>
-    public Cpu6502(ICpuMemory memory) { _mem = memory; Native = true; }
+    /// <summary>A processor on a memory map.</summary>
+    public Cpu6502(ICpuMemory memory) { _mem = memory; }
 
     /// <summary>
     /// The cycle (on this processor's clock) at which the memory access in progress happens. The data access is the last cycle of
@@ -117,78 +71,15 @@ public sealed class Cpu6502
     public void SetFlag(int flag, bool on) { if (on) P |= (byte)flag; else P &= (byte)~flag; }
     public void SetNZ(int v) { SetFlag(FlagZ, (v & 0xFF) == 0); SetFlag(FlagN, (v & 0x80) != 0); }
 
-    /// <summary>True while the KERNAL ROM would be mapped in at 57344-65535.</summary>
-    bool KernalVisible => _bus != null && !Native && (_bus!.Ram[1] & 2) != 0;
-    bool BasicVisible => _bus != null && !Native && (_bus!.Ram[1] & 3) == 3;
-
-    bool InRom(int pc) => pc >= 0xE000 ? KernalVisible : pc >= 0xA000 && pc < 0xC000 && BasicVisible;
-
     // ---------- running ----------
-    /// <summary>Runs the routine at <paramref name="address"/> as if JSR'd, until it returns, stops or is interrupted.</summary>
-    public CpuStop Call(int address)
+    /// <summary>Executes one instruction, with no interrupt check.</summary>
+    void ExecuteInstruction()
     {
-        if (_bus == null || Native) throw new InvalidOperationException("Call is for the interpreter's processor; a native processor is run with StepNative");
-        StopReason = CpuStop.None;
-        byte savedSp = SP;
-        Push((ReturnAddress - 1) >> 8);
-        Push((ReturnAddress - 1) & 0xFF);
-        PC = address & 0xFFFF;
-
-        long nextTick = Cycles + TickInterval, nextIrq = Cycles + IrqPollInterval;
-        int pollInterval = CycleAccurate ? 1 : IrqPollInterval;
-        if (CycleAccurate) _bus!.FollowCycles(() => Cycles);
-        try
-        {
-            while (StopReason == CpuStop.None)
-            {
-                if (PC == ReturnAddress) { StopReason = CpuStop.Returned; break; }
-                if (Cycles >= nextIrq)
-                {
-                    nextIrq = Cycles + pollInterval;
-                    bool nmi = _bus!.NmiLine;
-                    if (nmi && !_nmiActive) Nmi(); // the NMI is edge-triggered and cannot be masked
-                    _nmiActive = nmi;
-                    if (!GetFlag(FlagI) && _bus!.IrqLine) Irq();
-                }
-                long before = Cycles;
-                Step();
-                if (CycleAccurate && _bus!.FollowingCycles && StopReason == CpuStop.None)
-                    Cycles += _bus!.Vic.StolenCycles(_bus!.AbsoluteCycleOf(before), _bus!.AbsoluteCycleOf(Cycles));
-                if (Cycles >= nextTick)
-                {
-                    nextTick = Cycles + TickInterval;
-                    if (Tick?.Invoke(Cycles) == true) StopReason = CpuStop.Interrupted;
-                }
-            }
-        }
-        finally
-        {
-            SP = savedSp;
-            if (CycleAccurate) _bus!.ReleaseCycles();
-        }
-        return StopReason;
-    }
-
-    /// <summary>Executes one instruction (or one trap).</summary>
-    public void Step()
-    {
-        if (!Native && Traps.Count > 0 && Traps.TryGetValue(PC, out var trap))
-        {
-            Cycles += 6;
-            switch (trap(this))
-            {
-                case TrapResult.Return: Rts(); break;
-                case TrapResult.Stop: StopReason = CpuStop.Terminated; break;
-            }
-            return;
-        }
-        if (!Native && InRom(PC)) { StopReason = CpuStop.NoRom; return; }
-
         int op = Fetch();
         int cycles = BaseCycles[op];
         if (cycles == 0)
         {
-            if (Native && UnstableCycles.TryGetValue(op, out int unstable)) { Elapse(unstable, op); ExecuteUnstable(op); return; }
+            if (UnstableCycles.TryGetValue(op, out int unstable)) { Elapse(unstable, op); ExecuteUnstable(op); return; }
             StopReason = CpuStop.IllegalOpcode;
             PC = (PC - 1) & 0xFFFF;
             return;
@@ -205,7 +96,7 @@ public sealed class Cpu6502
         if (Stall != null) Cycles += Stall(start, length, WriteCycles[op]);
     }
 
-    // ---------- the unstable undocumented opcodes (native mode only) ----------
+    // ---------- the unstable undocumented opcodes ----------
     // Copy protection and some demos use them. Their results depend on analogue effects; these are the values most emulators
     // (and the C64's 6510 at room temperature) agree on, with the usual "magic" constant $EE for the two that take one.
     static readonly Dictionary<int, int> UnstableCycles = new()
@@ -251,7 +142,7 @@ public sealed class Cpu6502
         Wr(address, stored);
     }
 
-    // ---------- native mode ----------
+    // ---------- reset, state and stepping ----------
     /// <summary>Power-on or RESET: the stack pointer lands on $FD, interrupts are masked and execution starts at the vector at $FFFC.</summary>
     public void Reset()
     {
@@ -274,7 +165,7 @@ public sealed class Cpu6502
         {
             int op = _mem.Read(PC & 0xFFFF);
             int length = BaseCycles[op];
-            if (length == 0 && Native) UnstableCycles.TryGetValue(op, out length);
+            if (length == 0) UnstableCycles.TryGetValue(op, out length);
             if (length == 0) return Cycles;
             return Cycles + length + StallOf(length, op) - 1;
         }
@@ -291,7 +182,7 @@ public sealed class Cpu6502
         return _stallExtra;
     }
 
-    /// <summary>Writes the registers and the clock of a native processor.</summary>
+    /// <summary>Writes the registers and the clock.</summary>
     public void SaveState(BinaryWriter w)
     {
         AccessCycle = Cycles;                                  // the chips are saved as of the clock, as a loaded state will see it
@@ -320,10 +211,10 @@ public sealed class Cpu6502
     public void SetOverflow() => P |= FlagV;
 
     /// <summary>
-    /// One step of a native processor: takes a pending NMI (on the edge of its line) or IRQ (while the line is low and I is clear),
+    /// One step: takes a pending NMI (on the edge of its line) or IRQ (while the line is low and I is clear),
     /// otherwise executes an instruction. <see cref="StopReason"/> says if it hit an opcode that is not implemented.
     /// </summary>
-    public void StepNative()
+    public void Step()
     {
         BeforeStep?.Invoke(this);
         AccessCycle = Cycles;                                  // the lines are sampled at the start of the step
@@ -332,7 +223,7 @@ public sealed class Cpu6502
         _nmiActive = nmi;
         if (edge) { EnterInterrupt(0xFFFA); return; }
         if (!GetFlag(FlagI) && IrqLine?.Invoke() == true) { EnterInterrupt(0xFFFE); return; }
-        Step();
+        ExecuteInstruction();
     }
 
     void EnterInterrupt(int vector)
@@ -341,72 +232,6 @@ public sealed class Cpu6502
         Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
         SetFlag(FlagI, true);
         PC = Word(vector);
-    }
-
-    // ---------- interrupts ----------
-    void Irq()
-    {
-        if (KernalVisible)
-        {
-            int vector = Word(0x314);
-            if (vector == 0xEA31) { AcknowledgeSystemIrq(); Cycles += 40; return; } // the stock handler: no frame needed
-            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
-            SetFlag(FlagI, true);
-            Push(A); Push(X); Push(Y); // what the ROM entry does before jumping through $0314
-            PC = vector;
-        }
-        else
-        {
-            int vector = Word(0xFFFE);
-            if (vector == 0) { _bus!.Read(0xDC0D); return; } // no handler installed: ignore rather than run at 0
-            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
-            SetFlag(FlagI, true);
-            PC = vector;
-        }
-        Cycles += 7;
-    }
-
-    void Nmi()
-    {
-        if (KernalVisible)
-        {
-            int vector = Word(0x318);
-            if (vector == 0xFE47)
-            {
-                // the stock handler: RESTORE alone does nothing; with RUN/STOP held it is the warm start
-                _bus!.Read(0xDD0D);
-                var input = _bus!.Input;
-                if (input != null && input.Restore && (input.KeyColumn(7) & 0x80) != 0) StopReason = CpuStop.Terminated;
-                Cycles += 40;
-                return;
-            }
-            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
-            SetFlag(FlagI, true);
-            PC = vector;
-        }
-        else
-        {
-            int vector = Word(0xFFFA);
-            if (vector == 0) { _bus!.Read(0xDD0D); return; } // no handler installed
-            Push(PC >> 8); Push(PC & 0xFF); Push((P & ~FlagB) | FlagU);
-            SetFlag(FlagI, true);
-            PC = vector;
-        }
-        Cycles += 7;
-    }
-
-    /// <summary>Acknowledges CIA 1 and ticks the jiffy clock, as the ROM's $EA31 does.</summary>
-    public void AcknowledgeSystemIrq()
-    {
-        _bus!.Read(0xDC0D);
-        SystemIrq?.Invoke();
-    }
-
-    /// <summary>The tail of the ROM interrupt handler ($EA81): pull Y, X, A and return from the interrupt.</summary>
-    public void LeaveInterrupt()
-    {
-        Y = (byte)Pull(); X = (byte)Pull(); A = (byte)Pull();
-        Rti();
     }
 
     void Rti()
@@ -427,19 +252,7 @@ public sealed class Cpu6502
         Fetch(); // BRK is followed by a padding byte
         Push(PC >> 8); Push(PC & 0xFF); Push(P | FlagB | FlagU);
         SetFlag(FlagI, true);
-        if (KernalVisible)
-        {
-            int vector = Word(0x316);
-            if (vector == 0xFE66) { StopReason = CpuStop.Break; return; }
-            Push(A); Push(X); Push(Y);
-            PC = vector;
-        }
-        else
-        {
-            int vector = Word(0xFFFE);
-            if (vector == 0 && !Native) { StopReason = CpuStop.Break; return; }
-            PC = vector;
-        }
+        PC = Word(0xFFFE);
     }
 
     // ---------- addressing ----------

@@ -41,7 +41,7 @@ public class CpuFunctionalTests
         while (cpu.Cycles < guard)
         {
             last = cpu.PC;
-            cpu.StepNative();
+            cpu.Step();
             Assert.Equal(CpuStop.None, cpu.StopReason);
             if (cpu.PC == last) break;                       // the test ends in a JMP * : success at $3469, any other one is a failed check
         }

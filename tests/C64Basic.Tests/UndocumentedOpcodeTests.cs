@@ -203,7 +203,7 @@ public class UndocumentedOpcodeTests
     public void NopsSkipTheirOperandAndTakeTheRightTime(string code, int cycles)
     {
         var (cpu, _) = Run(code);
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
+        Assert.True(cpu.Returned());
         Assert.Equal(cycles, cpu.Cycles);
     }
 
@@ -236,13 +236,7 @@ public class UndocumentedOpcodeTests
 
     [Theory]
     [InlineData("02")]      // JAM
-    [InlineData("8B 00")]   // XAA is unstable
-    [InlineData("AB 00")]   // LAX #
-    [InlineData("93 10")]   // AHX
-    [InlineData("9B 00 10")] // TAS
-    [InlineData("9C 00 10")] // SHY
-    [InlineData("BB 00 10")] // LAS
-    public void UnstableOpcodesAndJamsStillStop(string code)
+    public void JamsStop(string code)
     {
         var (cpu, _) = Run(code);
         Assert.Equal(CpuStop.IllegalOpcode, cpu.StopReason);

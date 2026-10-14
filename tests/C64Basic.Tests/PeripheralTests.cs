@@ -177,53 +177,6 @@ public class AccuracyDetailTests
         public void Write(int a, int v) => Bus.Write(a, (byte)v);
     }
 
-    // ---------- sprite DMA ----------
-    static int Stolen(Bus bus, long from, long to) => bus.Vic.StolenCycles(from, to);
-
-    static Bus WithSprites(int mask, int y = 100)
-    {
-        var bus = new Bus { Seconds = () => 0 };
-        bus.Write(0xD011, 0x0B);                              // no bad lines
-        bus.Write(0xD015, (byte)mask);
-        for (int n = 0; n < 8; n++) bus.Write(0xD001 + n * 2, (byte)y);
-        return bus;
-    }
-
-    [Fact]
-    public void ASpriteTakesItsCyclesAtItsOwnPlaceInTheLine()
-    {
-        var bus = WithSprites(0b100);                        // sprite 2 only, drawn from line 101
-        long line100 = 100 * Vic2.CyclesPerLine;
-        Assert.Equal(0, Stolen(bus, line100, line100 + 50));                       // nothing before its fetch
-        Assert.Equal(3, Stolen(bus, line100 + 50, line100 + 63 + 2));               // 58 + 2*2 = 62
-        Assert.Equal(0, Stolen(bus, line100 + 70, line100 + 120));
-    }
-
-    [Fact]
-    public void EightSpritesTake17CyclesInAll()
-    {
-        var bus = WithSprites(0xFF);
-        long line100 = 100 * Vic2.CyclesPerLine;
-        Assert.Equal(3 + 7 * 2, Stolen(bus, line100, line100 + 80));            // one line's fetches end 72 cycles in
-    }
-
-    [Fact]
-    public void SpritesThatAreNotOnTheNextLineStealNothing()
-    {
-        var bus = WithSprites(0xFF, y: 100);
-        long line50 = 50 * Vic2.CyclesPerLine;
-        Assert.Equal(0, Stolen(bus, line50, line50 + 3 * Vic2.CyclesPerLine));
-    }
-
-    [Fact]
-    public void ASpanThatStartsAfterTheFetchBeganStillCatchesTheRest()
-    {
-        var bus = WithSprites(0xFF);
-        long line101Start = 101 * Vic2.CyclesPerLine;
-        // sprites 3..7 are fetched at cycles 64..72, i.e. on line 101
-        Assert.Equal(5 * 2, Stolen(bus, line101Start, line101Start + 20));
-    }
-
     // ---------- light pen ----------
     [Fact]
     public void TheLightPenLatchesItsPositionOncePerFrame()

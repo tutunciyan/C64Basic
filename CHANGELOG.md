@@ -6,6 +6,8 @@
   `DELETE`, ...), the file-level disk drive and host-directory drive, the built-in KERNAL traps, `--strict`, `--rom-dir` as a switch for ROM
   mode (it only picks the folder now), `samples/*.bas`, and the tests of all that (the machine, disk-image, VIC-II, SID, CIA and CPU tests stay).
 - The window title and options are those of ROM mode only; `--help` lists them. The CI GUI smoke test is gone with it (CI has no ROMs).
+- The CPU is the native one only: no KERNAL/BASIC traps, `Call`, tick or cycle-accurate mode, `Step()` is the old `StepNative()`; the bus lost its cycle-following
+  clock, the `Written` event, the PEEK 197/653 shortcut and the zero-page seeding; `Vic2.StolenCycles` (the BA/AEC stall model replaced it) is gone.
 - The older versions keep working from their git tags (0.4.0 and before).
 
 **Sound**

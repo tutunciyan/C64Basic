@@ -54,26 +54,15 @@ public class NativeCpuTests
         Assert.Equal(0x0600, cpu.PC);
         Assert.Equal(0xFD, cpu.SP);
         Assert.True(cpu.GetFlag(Cpu6502.FlagI));
-        Assert.True(cpu.Native);
-    }
-
-    [Fact]
-    public void RunsInstructionsWithoutTraps()
-    {
-        var (cpu, ram) = Machine("A9 05 8D 00 03 E8 4C 00 06");   // LDA #5 : STA $0300 : INX : JMP $0600
-        cpu.Traps[0x0600] = c => throw new InvalidOperationException("traps are not used in native mode");
-        for (int i = 0; i < 4; i++) cpu.StepNative();
-        Assert.Equal(5, ram.Data[0x300]);
-        Assert.Equal(1, cpu.X);
     }
 
     [Fact]
     public void RomAddressesAreJustMemory()
     {
-        // an interpreter-mode CPU would stop on a jump into $E000; a native one executes what is there
+        // a jump into $E000 runs what is there
         var (cpu, ram) = Machine("4C 00 E0");
         ram.Load(0xE000, "A2 07");
-        cpu.StepNative(); cpu.StepNative();
+        cpu.Step(); cpu.Step();
         Assert.Equal(7, cpu.X);
         Assert.Equal(CpuStop.None, cpu.StopReason);
     }
@@ -86,16 +75,16 @@ public class NativeCpuTests
         cpu.IrqLine = () => line;
         ram.Vector(0xFFFE, 0x0700);
         ram.Load(0x0700, "E8 40");                             // INX RTI
-        cpu.StepNative();                                      // I is set: the IRQ waits, CLI runs
+        cpu.Step();                                      // I is set: the IRQ waits, CLI runs
         Assert.Equal(0x0601, cpu.PC);
-        cpu.StepNative();                                      // now the interrupt is taken
+        cpu.Step();                                      // now the interrupt is taken
         Assert.Equal(0x0700, cpu.PC);
         Assert.True(cpu.GetFlag(Cpu6502.FlagI));
         Assert.Equal(0xFA, cpu.SP);
         Assert.Equal(0x0601, ram.Data[0x1FD] << 8 | ram.Data[0x1FC]);
         Assert.Equal(0, ram.Data[0x1FB] & Cpu6502.FlagB);      // pushed without B
         line = false;
-        cpu.StepNative(); cpu.StepNative();                    // INX, RTI
+        cpu.Step(); cpu.Step();                    // INX, RTI
         Assert.Equal(1, cpu.X);
         Assert.Equal(0x0601, cpu.PC);
         Assert.False(cpu.GetFlag(Cpu6502.FlagI));
@@ -110,14 +99,14 @@ public class NativeCpuTests
         ram.Vector(0xFFFA, 0x0800);
         ram.Load(0x0800, "E8 40");
         line = true;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x0800, cpu.PC);
-        cpu.StepNative(); cpu.StepNative();                    // INX, RTI: the line is still low, but there is no second NMI
+        cpu.Step(); cpu.Step();                    // INX, RTI: the line is still low, but there is no second NMI
         Assert.Equal(0x0600, cpu.PC);
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x0601, cpu.PC);
-        line = false; cpu.StepNative();
-        line = true; cpu.StepNative();                         // a new edge
+        line = false; cpu.Step();
+        line = true; cpu.Step();                         // a new edge
         Assert.Equal(0x0800, cpu.PC);
     }
 
@@ -126,7 +115,7 @@ public class NativeCpuTests
     {
         var (cpu, ram) = Machine("00 EA");
         ram.Vector(0xFFFE, 0x0900);
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x0900, cpu.PC);
         Assert.Equal(CpuStop.None, cpu.StopReason);
         Assert.Equal(0x0602, ram.Data[0x1FD] << 8 | ram.Data[0x1FC]);
@@ -137,12 +126,12 @@ public class NativeCpuTests
     public void SetOverflowRaisesTheVFlag()
     {
         var (cpu, _) = Machine("50 FE B8");                    // BVC * ; CLV
-        cpu.StepNative(); cpu.StepNative();
+        cpu.Step(); cpu.Step();
         Assert.Equal(0x0600, cpu.PC);                          // waiting
         cpu.SetOverflow();
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x0602, cpu.PC);
-        cpu.StepNative();
+        cpu.Step();
         Assert.False(cpu.GetFlag(Cpu6502.FlagV));
     }
 
@@ -152,11 +141,11 @@ public class NativeCpuTests
         var (cpu, ram) = Machine("AD 00 03 BD 80 03");         // LDA $0300 (4 cycles), LDA $0380,X (5 with a page crossing)
         long start = cpu.Cycles;
         ram.AccessCycles.Clear();
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(start + 3, ram.AccessCycles[^1]);         // cycles 0-2 fetch the opcode and operand, the fourth reads the data
         Assert.Equal(start + 4, cpu.Cycles);
         cpu.X = 0xFF;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(start + 8, ram.AccessCycles[^1]);
         Assert.Equal(start + 9, cpu.Cycles);
     }
@@ -167,7 +156,7 @@ public class NativeCpuTests
         var (cpu, ram) = Machine("EE 00 03");                  // INC $0300 (6 cycles)
         long start = cpu.Cycles;
         ram.AccessCycles.Clear();
-        cpu.StepNative();
+        cpu.Step();
         // the read, the write of the old value and the write of the new one
         Assert.Equal(new[] { start + 3, start + 4, start + 5 }, ram.AccessCycles.Skip(ram.AccessCycles.Count - 3).ToArray());
     }
@@ -176,7 +165,7 @@ public class NativeCpuTests
     public void AnUnimplementedOpcodeStopsTheStep()
     {
         var (cpu, _) = Machine("02");
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(CpuStop.IllegalOpcode, cpu.StopReason);
         Assert.Equal(0x0600, cpu.PC);
     }
@@ -187,7 +176,7 @@ public class NativeCpuTests
         var (cpu, _) = Machine("AB FF");                       // LAX #$FF
         cpu.A = 0x00;
         long start = cpu.Cycles;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0xEE, cpu.A);                             // (A | $EE) & $FF
         Assert.Equal(0xEE, cpu.X);
         Assert.True(cpu.GetFlag(Cpu6502.FlagN));
@@ -195,7 +184,7 @@ public class NativeCpuTests
 
         (cpu, _) = Machine("8B FF");                           // XAA #$FF
         cpu.A = 0x11; cpu.X = 0xF3;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0xF3, cpu.A);                             // (A | $EE) & X & $FF
     }
 
@@ -205,18 +194,18 @@ public class NativeCpuTests
         var (cpu, ram) = Machine("9C 00 12");                  // SHY $1200,X
         cpu.Y = 0xFF; cpu.X = 0;
         long start = cpu.Cycles;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x13, ram.Data[0x1200]);                  // Y & (high byte + 1)
         Assert.Equal(5, cpu.Cycles - start);
 
         (cpu, ram) = Machine("9E 00 12");                      // SHX $1200,Y
         cpu.X = 0xFF; cpu.Y = 0;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x13, ram.Data[0x1200]);
 
         (cpu, ram) = Machine("9F 00 12");                      // AHX $1200,Y
         cpu.A = 0xFF; cpu.X = 0x0F; cpu.Y = 0;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x03, ram.Data[0x1200]);                  // A & X & $13
     }
 
@@ -225,7 +214,7 @@ public class NativeCpuTests
     {
         var (cpu, ram) = Machine("9E F0 12");                  // SHX $12F0,Y with Y = $20: crosses into $13xx
         cpu.X = 0x07; cpu.Y = 0x20;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x03, ram.Data[0x0310]);                  // X & $13 = 3, so the address is $0310, not $1310
         Assert.Equal(0, ram.Data[0x1310]);
     }
@@ -235,14 +224,14 @@ public class NativeCpuTests
     {
         var (cpu, ram) = Machine("9B 00 12");                  // TAS $1200,Y
         cpu.A = 0xF0; cpu.X = 0x3C; cpu.Y = 0;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x30, cpu.SP);                            // A & X
         Assert.Equal(0x10, ram.Data[0x1200]);                  // SP & $13
 
         (cpu, ram) = Machine("BB 00 03");                      // LAS $0300,Y
         ram.Data[0x300] = 0xF0;
         cpu.SP = 0x3C; cpu.Y = 0;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x30, cpu.A);
         Assert.Equal(0x30, cpu.X);
         Assert.Equal(0x30, cpu.SP);
@@ -255,23 +244,10 @@ public class NativeCpuTests
         ram.Data[0x40] = 0x00; ram.Data[0x41] = 0x12;
         cpu.A = 0xFF; cpu.X = 0x0F; cpu.Y = 0x05;
         long start = cpu.Cycles;
-        cpu.StepNative();
+        cpu.Step();
         Assert.Equal(0x03, ram.Data[0x1205]);
         Assert.Equal(6, cpu.Cycles - start);
     }
-
-    [Fact]
-    public void TheInterpretersProcessorStillRefusesTheUnstableOpcodes()
-    {
-        var bus = new Bus();
-        var cpu = new Cpu6502(bus);
-        bus.Ram[0x200] = 0xAB; bus.Ram[0x201] = 0xFF;
-        Assert.Equal(CpuStop.IllegalOpcode, cpu.Call(0x200));
-    }
-
-    [Fact]
-    public void CallIsNotForNativeProcessors() =>
-        Assert.Throws<InvalidOperationException>(() => new Cpu6502(new Ram()).Call(0x600));
 
     // ---------- lockstep ----------
     sealed class Member : ILockstepMember

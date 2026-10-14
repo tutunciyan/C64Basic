@@ -36,7 +36,6 @@ public class BusTests
         var bus = new Bus();
         Assert.Equal(14, bus.Vic.Border);
         Assert.Equal(6, bus.Vic.Background);
-        Assert.Equal(14, bus.Ram[646]);
     }
 
     [Fact]
@@ -76,19 +75,6 @@ public class BusTests
         Assert.Equal(14, bus.Vic.Border);
         Assert.Equal(9, bus.Ram[53280]);
         Assert.Equal(bus.Read(53248 + 8), C64Basic.Core.Runtime.CharRom.Read(53248 + 8));
-    }
-
-    [Fact]
-    public void WrittenEventReportsIoFlag()
-    {
-        var bus = new Bus();
-        var seen = new List<(int Address, byte Value, bool Io)>();
-        bus.Written += (a, v, io) => seen.Add((a, v, io));
-        bus.Write(1024, 1);
-        bus.Write(53280, 2);
-        bus.Ram[1] = 0x34;
-        bus.Write(53280, 3);
-        Assert.Equal(new[] { (1024, (byte)1, false), (53280, (byte)2, true), (53280, (byte)3, false) }, seen);
     }
 
     [Fact]

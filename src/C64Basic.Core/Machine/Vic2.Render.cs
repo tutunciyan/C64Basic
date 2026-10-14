@@ -30,7 +30,7 @@ public sealed partial class Vic2
     readonly List<Entry> _log = new();
     readonly byte[] _baseRegs = new byte[RegisterCount];   // the registers at the start of line _baseLine
     long _baseLine;
-    readonly object _composeGate = new(); // the host renders frames while the interpreter may read collision registers
+    readonly object _composeGate = new(); // the host renders frames while the machine thread may read collision registers
 
     void LogWrite(int reg, byte value)
     {

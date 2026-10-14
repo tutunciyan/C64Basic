@@ -204,7 +204,7 @@ public class CpuTests
         var (cpu, _) = Run("20 06 02 A2 07 60 A9 09 60");
         Assert.Equal(9, cpu.A);
         Assert.Equal(7, cpu.X);
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
+        Assert.True(cpu.Returned());
         Assert.Equal(0xFF, cpu.SP);
     }
 
@@ -304,14 +304,6 @@ public class CpuTests
     }
 
     [Fact]
-    public void BrkWithDefaultVectorReturnsToBasic()
-    {
-        var (cpu, _) = Run("A2 03 00");
-        Assert.Equal(CpuStop.Break, cpu.StopReason);
-        Assert.Equal(3, cpu.X);
-    }
-
-    [Fact]
     public void BrkUsesTheHardwareVectorWithRomBankedOut()
     {
         var (cpu, bus) = Run("00 EA A2 07 60", (b, _) =>
@@ -322,19 +314,7 @@ public class CpuTests
         });
         Assert.Equal(0x33, cpu.A);
         Assert.Equal(7, cpu.X);                    // RTI came back after the padding byte
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
-    }
-
-    [Fact]
-    public void BrkThroughKernalVectorCanBeHooked()
-    {
-        var (cpu, _) = Run("00 EA 60", (b, _) =>
-        {
-            b.Ram[0x316] = 0x00; b.Ram[0x317] = 0x03;
-            Load(b, 0x300, "68 A8 68 AA 68 A9 44 40"); // pulls Y, X, A like the ROM's tail, then LDA #$44, RTI
-        });
-        Assert.Equal(0x44, cpu.A);
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
+        Assert.True(cpu.Returned());
     }
 
     [Fact]
@@ -347,105 +327,11 @@ public class CpuTests
     }
 
     [Fact]
-    public void CallingRomWithoutAnEmulationStops()
-    {
-        var (cpu, _) = Run("20 00 FF 60");
-        Assert.Equal(CpuStop.NoRom, cpu.StopReason);
-    }
-
-    [Fact]
     public void RomIsRamOnceBankedOut()
     {
         var (cpu, _) = Run("78 A9 35 85 01 20 00 E0 60", (b, _) => Load(b, 0xE000, "A2 09 60"));
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
+        Assert.True(cpu.Returned());
         Assert.Equal(9, cpu.X);
-    }
-
-    [Fact]
-    public void TrapsReplaceRomRoutines()
-    {
-        var (cpu, _) = Run("20 D2 FF 60", (b, c) => c.Traps[0xFFD2] = t => { t.X = 9; return TrapResult.Return; });
-        Assert.Equal(9, cpu.X);
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
-    }
-
-    [Fact]
-    public void TrapCanEndTheCall()
-    {
-        var (cpu, _) = Run("20 74 A4 A2 01 60", (b, c) => c.Traps[0xA474] = t => TrapResult.Stop);
-        Assert.Equal(CpuStop.Terminated, cpu.StopReason);
-        Assert.Equal(0, cpu.X);
-    }
-
-    [Fact]
-    public void TickCanInterruptARunawayLoop()
-    {
-        int ticks = 0;
-        var (cpu, _) = Run("4C 00 02", (b, c) => c.Tick = cycles => ++ticks == 3);
-        Assert.Equal(CpuStop.Interrupted, cpu.StopReason);
-        Assert.True(cpu.Cycles >= 3 * 1024);
-    }
-
-    [Fact]
-    public void CiaTimerInterruptRunsTheUserHandler()
-    {
-        double now = 0;
-        var (cpu, bus) = Run("58 A5 FB F0 FC 60", (b, c) =>
-        {
-            b.Seconds = () => now;
-            b.Ram[0x314] = 0x00; b.Ram[0x315] = 0x03;
-            // INC $FB, acknowledge the CIA, then pull Y, X, A and RTI like the ROM tail
-            Load(b, 0x300, "E6 FB AD 0D DC 68 A8 68 AA 68 40");
-            c.Tick = _ => { now += 0.001; return now > 1; };
-        });
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
-        Assert.Equal(1, bus.Ram[0xFB]);
-        Assert.True(now < 0.1);
-    }
-
-    [Fact]
-    public void RasterInterruptRunsTheHandlerAndIsAcknowledged()
-    {
-        double now = 0;
-        var (cpu, bus) = Run("78 A9 7F 8D 0D DC A9 40 8D 12 D0 A9 01 8D 1A D0 58 A5 FB F0 FC 60", (b, c) =>
-        {
-            b.Seconds = () => now;
-            b.Ram[0x314] = 0x00; b.Ram[0x315] = 0x03;
-            // INC $FB, ack VIC with ASL $D019 (the RMW dummy write clears the flag), pull Y, X, A, RTI
-            Load(b, 0x300, "E6 FB 0E 19 D0 68 A8 68 AA 68 40");
-            c.Tick = _ => { now += 0.001; return now > 1; };
-        });
-        Assert.Equal(CpuStop.Returned, cpu.StopReason);
-        Assert.Equal(1, bus.Ram[0xFB]);
-    }
-
-    [Fact]
-    public void StockIrqHandlerIsEmulated()
-    {
-        double now = 0;
-        int jiffies = 0;
-        var (cpu, _) = Run("58 4C 01 02", (b, c) =>
-        {
-            b.Seconds = () => now;
-            c.SystemIrq = () => jiffies++;
-            c.Tick = _ => { now += 0.001; return jiffies >= 2; };
-        });
-        Assert.Equal(CpuStop.Interrupted, cpu.StopReason);
-        Assert.Equal(2, jiffies);
-    }
-
-    [Fact]
-    public void InterruptsAreIgnoredWhileTheIFlagIsSet()
-    {
-        double now = 0;
-        int jiffies = 0;
-        Run("78 4C 01 02", (b, c) =>
-        {
-            b.Seconds = () => now;
-            c.SystemIrq = () => jiffies++;
-            c.Tick = _ => { now += 0.001; return now > 0.1; };
-        });
-        Assert.Equal(0, jiffies);
     }
 
     [Fact]
